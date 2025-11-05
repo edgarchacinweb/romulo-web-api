@@ -1,0 +1,91 @@
+import re
+import uuid
+from werkzeug.datastructures.file_storage import FileStorage
+
+class Validations():
+    @classmethod
+    def is_email(self, email:str):
+        pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+        return bool(re.match(pattern, email))
+    
+    @classmethod
+    def is_password(self, password:str):
+        pattern = r'[A-Za-zÁÉÍÓÚáéíóúÑñ0-9.#!_¡-]{5,30}$'
+        return bool(re.match(pattern, password))
+    
+    @classmethod
+    def is_uuid(self, id: str):
+        try:
+            obj = uuid.UUID(id, version=4)
+            return str(obj) == id
+        except ValueError:
+            return False
+        
+    @classmethod
+    def valid_format(self, filename:str):
+        formats = (".png", ".jpeg", ".jpg", ".webp")
+        return any(filename.endswith(f) for f in formats)
+    
+    @classmethod
+    def is_ci(self, ci: str):
+        return bool(re.match(pattern=r"^\d{7,9}$", string=ci))
+    
+    @classmethod
+    def is_phone(self, phone: str):
+        return bool(re.match(pattern=r"^(0412|0414|0416|0424|0426)-\d{7}$", string=phone))
+    
+    @classmethod
+    def is_gender(self, gender: str):
+        return gender in ("Masculino", "Femenino")
+    
+    @classmethod
+    def is_name(self, name: str):
+        return bool(re.match(pattern=r"^[A-Za-zÁÉÍÓÚáéíóúÑñ]{3,}(?: [A-Za-zÁÉÍÓÚáéíóúÑñ]{3,})?$", string=name))
+    
+    @classmethod
+    def is_lastname(self, last_name: str):
+        return bool(re.match(pattern=r"^[A-Za-zÁÉÍÓÚáéíóúÑñ]{2,}(?: [A-Za-zÁÉÍÓÚáéíóÑñ]{2,})*$", string=last_name))
+    
+    @classmethod
+    def is_date(self, date: str):
+        return bool(re.match(r"^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$", date))
+
+    @classmethod
+    def is_otp(self, otp: str):
+        return bool(re.match(r"^\d{6}$", otp))
+
+    @classmethod
+    def is_subject(self, subject: str):
+        return bool(re.match(r"^(?!\s)(?!.*\s$)(?=.*[a-zA-ZñáéíóúÁÉÍÓÚ]).{3,50}$", subject))
+    
+    @classmethod
+    def is_grade(self, grade):
+        return bool(re.match(r"^[1-5]$", str(grade)))
+        
+    @classmethod
+    def is_section(self, section):
+        return bool(re.match(r"^[1-9]\d*$", str(section)))
+    
+    @classmethod
+    def is_time(self, time: str) -> bool:
+        return bool(re.match(r"^(?:[01]\d|2[0-3]):[0-5]\d$", time))
+    
+    @classmethod
+    def is_activity(self, activity: str) -> bool:
+        return bool(re.match(r"^(?!\s)[a-zA-ZñÑáéíóúÁÉÍÓÚ]+(?:\s[a-zA-ZñÑáéíóúÁÉÍÓÚ]+)*$", activity))
+
+    @classmethod
+    def is_qualification(self, qualification: str) -> bool:
+        return bool(re.match(r"^(1[0-9]|20|[1-9])$", str(qualification)))
+    
+    @classmethod
+    def is_lapse(self, lapse: str) -> bool:
+        return bool(re.match(r"^[1-3]$", str(lapse)))
+    
+    @classmethod
+    def is_pdf(self, file: FileStorage) -> bool:
+        return file and file.filename.endswith(".pdf")
+
+    @classmethod
+    def is_capacity(self, capacity: str) -> bool:
+        return bool(re.match(r"^(1[5-9]|[2-9]\d|[1-9]\d{2,})$", str(capacity)))
