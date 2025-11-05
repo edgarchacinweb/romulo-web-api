@@ -1,0 +1,12 @@
+/api/app/.venv/
+/api/.env
+/api/logs.txt
+/pgadmin/
+/postgres/
+**/__pycache__/
+**/*.sql
+/api/uploads/*.*
+/app/.astro/
+/app/.vscode/
+/app/node_modules/
+/app/package-lock.json
