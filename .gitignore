@@ -1,12 +1,6 @@
-/api/app/.venv/
-/api/.env
-/api/logs.txt
-/pgadmin/
-/postgres/
+.venv/
+.env
+logs.txt
 **/__pycache__/
 **/*.sql
-/api/uploads/*.*
-/app/.astro/
-/app/.vscode/
-/app/node_modules/
-/app/package-lock.json
+uploads/*.*
