@@ -20,6 +20,19 @@ auditory = AuditoriaRep()
 
 user_bp = Blueprint("users", __name__)
 
+@user_bp.route("/user/encrypt_pwd/<string:pwd>", methods=["GET"])
+def encryptpwd(pwd: str):
+    try:
+        if len(pwd) == 0:
+            raise MissingEntityData("Debes envíar una contraseña como parámetro.")
+        
+        password = bcrypt.generate_password_hash(pwd, int(os.getenv("pwd_rounds"))).decode("utf8")
+
+        return jsonify({"password": password})
+    except Exception as err:
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+
 @user_bp.route("/user/register", methods=["POST"])
 def register():
     try:
@@ -107,7 +120,6 @@ def login():
 @user_bp.route("/user/get", methods=["GET"])
 def get_user():
     try:
-        logger.debug("asad21e1d")
         payload = Security.verify_token(request.headers)
         
         if not payload:
@@ -116,9 +128,7 @@ def get_user():
         if not Validations.is_uuid(payload["id"]):
             raise InvalidId(F"ID inválido: {id}")
         
-        logger.debug("asas")
         user = rep.get(payload["id"])
-        logger.debug("asasasa")
         return jsonify(user.to_dict()), 200
     except Exception as err:
         ex = exception_handler(err)
@@ -127,9 +137,7 @@ def get_user():
 @user_bp.route("/user/get", methods=["GET"])
 @user_bp.route("/user/get/<string:ci>", methods=["GET"])
 def get(ci: str):
-    logger.debug("1e19ek10k12k9e19e1")
     try:
-        logger.debug("asad21e1d")
         payload = Security.verify_token(request.headers)
         
         if not payload:
@@ -140,18 +148,17 @@ def get(ci: str):
         
         user = None
         if not ci:
-            logger.debug("asas")
             user = rep.get(payload["id"])
-            logger.debug("asasasa")
         else:
-            logger.debug("asas32121")
             people = peopleRep.get_by_ci(ci)
             userResult = rep.get_by_people_id(people.id)
             user = rep.get(userResult)
             user.password = None
             logger.debug(user.to_dict())
         logger.debug(user.to_dict(), "/user/get")
-        return jsonify(user.to_dict()), 200
+        user_dict = user.to_dict()
+        del user_dict["Clave"]
+        return jsonify(user_dict), 200
     except Exception as err:
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]

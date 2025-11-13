@@ -140,3 +140,16 @@ def update():
     except Exception as err:
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
+
+@reg_term_bp.route("/registration/count", methods=["GET"])
+def registrationCount():
+    try:
+        payload = Security.verify_token(request.headers);
+    
+        if not payload or payload["role"] != Rol.ADMIN.name:
+            raise Unauthorized()
+        
+        return jsonify({"count": 0}), 200
+    except Exception as err:
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
