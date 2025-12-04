@@ -56,7 +56,8 @@ class DocenteRep(Repository):
                     "id": t[0],
                     "DatosPersona": DatosPersona(t[1:9]),
                     "Materia": Materia(t[9:11]),
-                    "Activo": t[11]
+                    "Activo": t[11],
+                    "FechaCreacion": t[12]
                 }) for t in teachers
             ]
         except Exception as err:
@@ -134,12 +135,16 @@ class DocenteRep(Repository):
             raise err
 
     def delete(self, identity: str):
-        cursor = self.db_connection.cursor()
-        sql = "CALL eliminar_docente(%s)"
-        self.logger.debug(sql, "SQL")
-        cursor.execute(sql, (identity,))
-        cursor.close()
-        self.db_connection.commit()
+        try:
+            cursor = self.db_connection.cursor()
+            sql = "CALL eliminar_docente(%s)"
+            self.logger.debug(sql, "SQL")
+            cursor.execute(sql, (identity,))
+            cursor.close()
+            self.db_connection.commit()
+        except Exception as err:
+            self.db_connection.rollback()
+            raise err
 
     def add_subject(self, ci: str, subject_name: str) -> str:
         try:

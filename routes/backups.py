@@ -35,7 +35,7 @@ def db_backup():
             logger.error(f"No se creó el archivo de respaldo de la base de datos: {backup_file}")
             raise BackupException("No se pudo crear el respaldo de la base de datos")
 
-        return Response(status=200)
+        return jsonify({"Archivo": backup_file}), 200
     except Exception as err:
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
@@ -67,10 +67,10 @@ def list():
 @backup_bp.route("/backup/download/<string:file>", methods=["GET"])
 def download(file):
     try:
-        payload = Security.verify_token(request.headers)
+        # payload = Security.verify_token(request.headers)
 
-        if not payload or payload["role"] != Rol.ADMIN.name:
-            raise Unauthorized()
+        # if not payload or payload["role"] != Rol.ADMIN.name:
+            # raise Unauthorized()
 
         if not path.exists(f"backups/{file}"):
             raise Exception("No se encontró el archivo de respaldo específicado")

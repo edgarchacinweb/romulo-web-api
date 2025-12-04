@@ -44,6 +44,7 @@ def register():
             raise MissingEntityData("Faltan datos para realizar la operación")
         
         user_response = rep.get_by_people_id(data["DatosPersonaId"])
+        logger.debug("Datos del usuario buscados")
 
         if user_response and len(user_response) > 0:
             return jsonify({"id": user_response[0]}), 200
@@ -54,12 +55,17 @@ def register():
             raise ValidationError("Sólo puedes registrar un representante o un docente")
         elif not Validations.is_uuid(data["DatosPersonaId"]):
             raise InvalidId("El ID de la persona es inválido")
+        
+        logger.debug("Validaciones realizadas")
 
         if not "Clave" in data or not data["Clave"]:
             password = Security.generate_password()
-            send_email(data["Email"], "Contraseña temporal", "temporal-password", password)
+            logger.debug("Clave generada")
+            # send_email(data["Email"], "Contraseña temporal", "temporal-password", password)
+            # logger.debug("correo enviado")
         else:
             password = data["Clave"]
+
 
         user: Usuario = Usuario({
             "Email": data["Email"],
@@ -69,6 +75,8 @@ def register():
         })
 
         id = rep.create(user)
+
+        logger.debug("Usuario creado")
 
         if not id:
             raise InsertEntityError("No se pudo crear el usuario")
@@ -81,6 +89,8 @@ def register():
                 "id": id
             })
         }))
+
+        logger.debug("Auditoria creada")
 
         return jsonify({"id": id}), 201
     except Exception as err:

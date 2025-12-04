@@ -3,7 +3,6 @@ from database.PeriodoInscripcion import PeriodoInscripcionRep
 from database.PeriodoEscolar import PeriodoEscolarRep
 from models.Usuario import Rol
 from models.PeriodoInscripcion import PeriodoInscripcion
-from models.PeriodoEscolar import PeriodoEscolar
 from utils.exceptions import *
 from utils.validations import Validations
 from utils.logger import Logger
@@ -27,6 +26,7 @@ def create():
             raise Unauthorized()
         
         data = request.get_json()
+        logger.info(data)
 
         if not data or (not any(key in data for key in ("FechaInicio", "FechaFin"))):
             raise MissingEntityData("No se recibieron datos")
