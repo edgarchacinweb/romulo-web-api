@@ -45,6 +45,11 @@ def create():
             "Capacidad": data["Capacidad"]
         })
 
+        latest_school_term = rep.get_latest()
+
+        if latest_school_term is not None and latest_school_term.fecha_inicio == term.fecha_inicio and latest_school_term.fecha_fin == term.fecha_fin:
+            return Response(status=409)
+
         term_id = rep.create(term)
 
         school_term = date_from.split("-")[0] + "-" + date_to.split("-")[0]
@@ -56,7 +61,7 @@ def create():
             "Descripcion": f"Establecido período escolar {school_term}"
         }))
 
-        return jsonify({"id": term_id})
+        return jsonify({"id": term_id}), 201
     except Exception as err:
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]

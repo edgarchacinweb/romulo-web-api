@@ -48,14 +48,14 @@ class PeriodoEscolarRep(Repository):
     
     def get_latest(self):
         cursor = self.db_connection.cursor()
-        sql = "SELECT * FROM \"PeriodoEscolar\" WHERE \"Activo\"=TRUE AND CURRENT_DATE <= \"FechaFin\" ORDER BY \"FechaInicio\" DESC LIMIT 1"
+        sql = "SELECT * FROM \"PeriodoEscolar\" WHERE \"Activo\"=TRUE ORDER BY \"FechaInicio\" DESC LIMIT 1"
         self.logger.debug(sql, "SQL")
         cursor.execute(sql)
         periodo = cursor.fetchone()
         cursor.close()
 
         if not periodo or len(periodo) < 1:
-            raise EntityNotFound(f"No se encontró ningún registro")
+            return
 
         return PeriodoEscolar({
             "id": periodo[0],
