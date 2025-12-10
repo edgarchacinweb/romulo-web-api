@@ -89,7 +89,7 @@ def list():
         if limit != None:
             limit = int(limit)
 
-        data = rep.list(offset, limit)
+        data = rep.list()
 
         if data == None or len(data) == 0:
             raise EntityNotFound("No hay inscripciones disponibles")

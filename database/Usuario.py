@@ -81,11 +81,11 @@ class UsuarioRep(Repository):
             self.db_connection.rollback()
             raise e
 
-    def list(self, limit, offset):
+    def list(self):
         cursor = self.db_connection.cursor()
         sql = "SELECT * FROM \"Usuario\" INNER JOIN \"DatosPersona\" ON \"DatosPersona\".\"DatosPersonaId\" = \"Usuario\".\"DatosPersona\" LIMIT %s OFFSET %s"
         self.logger.debug(sql, "SQL")
-        cursor.execute(sql, (limit or 5, offset or 0))
+        cursor.execute(sql)
         users = cursor.fetchall()
         cursor.close()
 
@@ -105,7 +105,8 @@ class UsuarioRep(Repository):
         if "Email" in filters:
             sql += f" AND \"Usuario\".\"Email\" ILIKE '%{filters['Email']}%'"
 
-        sql += f" LIMIT {limit or 5} OFFSET {offset or 0}"
+        # sql += f" LIMIT {limit or 5} OFFSET {offset or 0}"
+        sql += "ORDER BY \"Usuario\".\"FechaCreacion\" DESC;"
         self.logger.debug(sql, "SQL")
         cursor.execute(sql)
         users = cursor.fetchall()
@@ -114,9 +115,9 @@ class UsuarioRep(Repository):
         return [Usuario({
             "id": u[0],
             "Email": u[1],
-            "Clave": u[2],
             "Rol": Rol.TEACHER if u[3] == "docente" else Rol.PARENT,
             "DatosPersonaId": u[4],
+            "FechaCreacion": u[6],
             "DatosPersona": DatosPersona({
                 "DatosPersonaId": u[7],
                 "Nombre": u[8],

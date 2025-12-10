@@ -8,31 +8,36 @@ class PeriodoInscripcion:
         self.id: str = None
         self.start: date = None
         self.end: date = None
+        self.fecha_creacion: date = None
         self.periodo_escolar: PeriodoEscolar = None
         
         if len(args) > 1:
             self.id = args[0]
             self.start = str_to_date(args[1])
             self.end = str_to_date(args[2])
-            self.periodo_escolar = args[3]
+            self.fecha_creacion = str_to_date(args[3])
+            self.periodo_escolar = args[4]
         elif len(args) == 1 and isinstance(args[0], dict):
             dp_dict = args[0]
             if "id" in dp_dict: self.id = dp_dict["id"]
             if "Inicio" in dp_dict: self.start = str_to_date(dp_dict["Inicio"])
             if "Fin" in dp_dict: self.end = str_to_date(dp_dict["Fin"])
+            if "FechaCreacion" in dp_dict: self.fecha_creacion = str_to_date(dp_dict["FechaCreacion"])
             if "PeriodoEscolar" in dp_dict: self.periodo_escolar = dp_dict["PeriodoEscolar"]
         else:
             dp_tuple = args[0]
             self.id = dp_tuple[0]
             self.start = str_to_date(dp_tuple[1])
             self.end = str_to_date(dp_tuple[2])
-            self.periodo_escolar = dp_tuple[3]
+            self.fecha_creacion = str_to_date(dp_tuple[3])
+            self.periodo_escolar = dp_tuple[4]
 
     def to_dict(self):
         reg_dict = dict()
         reg_dict["InscripcionId"] = self.id
         if self.start: reg_dict["Inicio"] = self.start.strftime("%Y-%m-%d")
         if self.end: reg_dict["Fin"] = self.end.strftime("%Y-%m-%d")
+        if self.fecha_creacion: reg_dict["FechaCreacion"] = self.fecha_creacion.strftime("%Y-%m-%d, %I:%M:%S %p")
         if self.periodo_escolar: reg_dict["PeriodoEscolar"] = self.periodo_escolar.to_dict()
         return reg_dict
     

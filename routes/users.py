@@ -198,14 +198,7 @@ def list():
         if not payload or payload["role"] != Rol.ADMIN.name:
             raise Unauthorized()
 
-        offset = request.args.get("offset")
-        limit = request.args.get("limit")
-        if offset:        
-            offset = int(offset)
-        if limit:
-            limit = int(limit)
-
-        users = rep.list(offset, limit)
+        users = rep.list()
         
         if not users:
             raise EntityNotFound("No se encontraron usuarios registrados")

@@ -45,11 +45,11 @@ class PeriodoInscripcionRep(Repository):
             })
         })
 
-    def list(self, limit, offset):
+    def list(self):
         cursor = self.db_connection.cursor()
-        sql = "SELECT * FROM \"PeriodoInscripcion\" LIMIT %s OFFSET %s"
+        sql = "SELECT pi.\"PeriodoInscripcion\", pi.\"Inicio\", pi.\"Fin\", pi.\"FechaCreacion\", pe.\"PeriodoEscolarId\", pe.\"FechaInicio\", pe.\"FechaFin\" FROM \"PeriodoInscripcion\" AS pi INNER JOIN \"PeriodoEscolar\" AS pe ON pi.\"PeriodoEscolarId\"=pe.\"PeriodoEscolarId\";"
         self.logger.debug(sql, "SQL")
-        cursor.execute(sql, (limit or 5, offset or 0))
+        cursor.execute(sql)
         inscripciones = cursor.fetchall()
         cursor.close()
 
@@ -57,8 +57,11 @@ class PeriodoInscripcionRep(Repository):
             "id": inscripcion[0],
             "Inicio": inscripcion[1],
             "Fin": inscripcion[2],
+            "FechaCreacion": inscripcion[3],
             "PeriodoEscolar": PeriodoEscolar({
-                "id": inscripcion[3]
+                "id": inscripcion[4],
+                "FechaInicio": inscripcion[5],
+                "FechaFin": inscripcion[6]
             })
         }) for inscripcion in inscripciones]
 

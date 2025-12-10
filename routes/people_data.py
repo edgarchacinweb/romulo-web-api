@@ -22,8 +22,10 @@ def create():
             "Apellido": data["Apellido"],
             "Sexo": data["Sexo"],
             "Cedula": data["Cedula"],
-            "Telefono": data["Telefono"],
         })
+
+        if "Telefono" in data:
+            person.phone = data["Telefono"]
 
         if "Direccion" in data and "Ocupacion" in data:
             person.direccion = data["Direccion"]
@@ -42,7 +44,7 @@ def create():
         if DatosPersonaid != None:
             return jsonify({"id": DatosPersonaid}), 201
         else:
-            return jsonify({"message": "No se pudo insertar el registro en la base de datos"}), 500
+           raise InsertEntityError("No se pudo insertar el registro en la base de datos")
     except Exception as err:
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]

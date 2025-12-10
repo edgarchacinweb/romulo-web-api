@@ -3,6 +3,8 @@ from models.DatosPersona import DatosPersona
 from utils.validations import Validations
 from utils.exceptions import InvalidId, ValidationError
 from utils.logger import Logger
+from utils.helpers import str_to_date, date_to_str
+from datetime import date
 
 class Rol(Enum):
     ADMIN = "administrador"
@@ -15,6 +17,7 @@ class Usuario():
         self.email: str = None
         self.password: str = None
         self.role: Rol = None
+        self.fecha_creacion: date = None
         self.DatosPersonaId: str = None
         self.DatosPersona: DatosPersona = None
 
@@ -36,6 +39,7 @@ class Usuario():
                     self.role = user["Rol"]
                 else:
                     self.role = getattr(Rol, user["Rol"])
+            if "FechaCreacion" in user: self.fecha_creacion = str_to_date(user["FechaCreacion"])
             if "DatosPersonaId" in user: self.DatosPersonaId = user["DatosPersonaId"]
             if "DatosPersona" in user: self.DatosPersona = user["DatosPersona"]
         else:
@@ -57,6 +61,7 @@ class Usuario():
         if self.email: user["Email"] = self.email
         if self.password: user["Clave"] = self.password
         if self.role: user["Rol"] = self.role.value
+        if self.fecha_creacion: user["FechaCreacion"] = date_to_str(self.fecha_creacion)
         if self.DatosPersonaId: user["DatosPersonaId"] = self.DatosPersonaId
         if self.DatosPersona: user["DatosPersona"] = self.DatosPersona.to_dict()
         return user
