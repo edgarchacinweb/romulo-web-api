@@ -5,7 +5,7 @@ from database.DatosPersona import DatosPersonaRep
 from utils.exceptions import *
 from utils.handler import exception_handler
 from utils.validations import Validations
-from utils.image import resize
+from utils.image import resize, get_format
 from PIL import Image
 from utils.config import     app
 from pathlib import Path
@@ -133,27 +133,19 @@ def create_doc(ci: str):
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
 
-@docs_bp.route("/docs/get/<string:id>", methods=["GET"])
-@docs_bp.route("/docs/get/pdf/<string:id>", methods=["GET"])
-def get_docs(id: str = ""):
+@docs_bp.route("/docs/get/<string:resource>", methods=["GET"])
+def get_docs(resource: str = ""):
     try:
-        if not Validations.is_uuid(id):
-            raise InvalidId("El ID es inválido")
-        
         upload_folder: str = app.config["UPLOAD_FOLDER"]
-        url = f"{upload_folder}/{id}."
+        url = f"{upload_folder}/{resource}."
 
-        if "pdf" in request.base_url:
-            url += "pdf"
-        else:
-            url += "webp"
+        resource_url: Path = Path(url)
+        img_format = get_format(resource)
 
-        resource: Path = Path(url)
-
-        if not resource.is_file():
+        if not resource_url.is_file():
             raise EntityNotFound("No se encontró ninguna imagen o documento asociada al ID")
 
-        return send_file(resource, mimetype="image/webp" if "webp" in url else "application/pdf")
+        return send_file(resource_url, mimetype="image/webp" if img_format == "webp" else "application/pdf")
     except Exception as err:
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]

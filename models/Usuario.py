@@ -59,7 +59,7 @@ class Usuario():
         user = dict()
         if self.id: user["UsuarioId"] = self.id
         if self.email: user["Email"] = self.email
-        if self.password: user["Clave"] = self.password
+        # if self.password: user["Clave"] = self.password
         if self.role: user["Rol"] = self.role.value
         if self.fecha_creacion: user["FechaCreacion"] = date_to_str(self.fecha_creacion)
         if self.DatosPersonaId: user["DatosPersonaId"] = self.DatosPersonaId
