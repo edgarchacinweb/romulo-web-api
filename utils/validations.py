@@ -1,6 +1,7 @@
 import re
 import uuid
 from werkzeug.datastructures.file_storage import FileStorage
+from PIL import Image
 
 class Validations():
     @classmethod
@@ -89,3 +90,48 @@ class Validations():
     @classmethod
     def is_capacity(self, capacity: str) -> bool:
         return bool(re.match(r"^(1[5-9]|[2-9]\d|[1-9]\d{2,})$", str(capacity)))
+    
+    @classmethod
+    def is_valid_image(cls, file: FileStorage) -> bool:
+        if not file or file.filename == "":
+            return False
+
+        # 1. Validar extensión
+        ALLOWED_EXTENSIONS = { 'png', 'jpg', 'jpeg' }
+        filename = file.filename.lower()
+        if '.' not in filename or filename.rsplit('.', 1)[1] not in ALLOWED_EXTENSIONS:
+            return False
+
+        # 2. Validar tamaño (máximo 5MB)
+        MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB en bytes
+        file.seek(0, 2)  # Mover al final del archivo para obtener el tamaño
+        file_size = file.tell()
+        file.seek(0)  # Resetear el puntero al inicio
+        if file_size > MAX_FILE_SIZE:
+            return False
+
+        try:
+            # 3. Validar que sea una imagen real y verificar aspect ratio
+            image = Image.open(file)
+            image.verify()  # Verifica integridad del archivo (no decodifica todo)
+            
+            # Reabrir para chequear dimensiones (verify puede cerrar o limpiar datos)
+            file.seek(0)
+            image = Image.open(file) 
+            width, height = image.size
+            
+            # 4. Validar relación de aspecto 4:3
+            # Se permite un margen de error pequeño por redondeos
+            TARGET_RATIO = 4 / 3
+            current_ratio = width / height
+            tolerance = 0.05  # Tolerancia ajustada
+
+            if not (TARGET_RATIO - tolerance <= current_ratio <= TARGET_RATIO + tolerance):
+                return False
+                
+            return True
+            
+        except Exception:
+            return False
+
+    

@@ -1,4 +1,6 @@
 from flask import Blueprint, jsonify, request, Response
+from werkzeug.utils import secure_filename
+from database.connection import Connection
 from database.Estudiante import EstudianteRep
 from database.DatosPersona import DatosPersonaRep
 from database.Usuario import Usuario, UsuarioRep
@@ -10,11 +12,14 @@ from utils.exceptions import *
 from utils.validations import Validations
 from utils.logger import Logger
 from utils.Security import Security
+from utils.image import resize, get_format, convert_to_webp
 from models.Usuario import Rol
 from models.DatosPersona import DatosPersona
 from models.Curso import Curso
 from utils.handler import exception_handler
 from datetime import datetime
+from utils.config import app
+import os
 
 rep = EstudianteRep()
 logger = Logger()
@@ -23,42 +28,142 @@ student_bp = Blueprint("student", __name__)
 
 @student_bp.route("/students/create", methods=["POST"])
 def create():
+    connection = Connection().get_connection()
+    cursor = connection.cursor()
+    
+    # Inicializamos las rutas de archivos a None para evitar errores en el 'except'
+    # si la ejecución falla antes de definirlos.
+    full_path_carnet = None
+    full_path_dni = None
+    full_path_partida = None
+    full_path_notas = None
+
     try:
-        data = request.get_json()
+        # 1. Autenticación
+        payload = Security.verify_token(request.headers)
+        if not payload or payload["role"] not in [Rol.ADMIN.name, Rol.PARENT.name]:
+            raise Unauthorized()
 
-        if not data or any(key not in data for key in ("FechaNacimiento", "DatosPersonaId", "RepresentanteId")):
-            raise MissingEntityData("No se recibieron datos suficientes")
+        # 2. Extracción de Datos (CORRECCIÓN A: Usar request.form para multipart)
+        # request.form se comporta como un diccionario para los campos de texto
+        data = request.form 
+        files = request.files
 
-        if not Validations.is_date(data["FechaNacimiento"]):
-            raise ValidationError("La fecha de nacimiento introducida es inválida.")
-        elif not Validations.is_uuid(data["DatosPersonaId"]):
-            raise InvalidId("El ID de la persona es inválido.")
-        elif not Validations.is_uuid(data["RepresentanteId"]):
-            raise InvalidId("El ID del representante es inválido.")
+        # 3. Validaciones (Simplificadas para legibilidad)
+        required_fields = ["Nombre", "Apellido", "Genero", "Cedula", "FechaNacimiento", 
+                           "Parentesco", "Direccion", "IdRepresentante", "IdCurso"]
+        
+        allowed_parentesco = ['Madre', 'Padre', 'Abuelo/a', 'Tío/a', 'Hermano/a', 'Padrastro', 'Madrastra', 'Tutor Legal', 'Otro']
 
-        data["Activo"] = True
-        estudiante = Estudiante({
-            "FechaNacimiento": data["FechaNacimiento"],
-            "DatosPersonaId": data["DatosPersonaId"],
-            "RepresentanteId": data["RepresentanteId"]
-        })
-        id = rep.create(estudiante)
+        for field in required_fields:
+            if field not in data:
+                raise MissingEntityData(f"Falta el campo requerido: {field}")
 
-        parent_id = UsuarioRep().get_by_people_id(data["RepresentanteId"])
+        if data["Parentesco"] not in allowed_parentesco:
+            raise ValidationError(f"\"{data['Parentesco']}\" no es un parentesco válido")
 
-        AuditoriaRep().create(Auditoria({
-            "Accion": "Registro",
-            "Descripcion": "Registro de datos del estudiante",
-            "Usuario": Usuario({
-                "id": parent_id
-            })
-        }))
+        # Validación de existencia de archivos
+        required_files = ["FotoCarnet", "DocPartidaNacimiento", "DocNotasCertificadas"]
+        for file_key in required_files:
+            if file_key not in files:
+                raise MissingEntityData(f"Falta el archivo: {file_key}")
 
-        return jsonify({"id": id}), 201
+        # 4. Inserciones en Base de Datos (SIN COMMIT AÚN)
+        # Mantenemos la transacción abierta para obtener los IDs
+        
+        cursor.execute(
+            """INSERT INTO "DatosPersona" ("Nombre", "Apellido", "Sexo", "Cedula", "Direccion") 
+               VALUES (%s,%s,%s,%s,%s) RETURNING "DatosPersonaId";""",
+            (data["Nombre"], data["Apellido"], data["Genero"], data["Cedula"], data["Direccion"])
+        )
+        row = cursor.fetchone()
+        if not row: raise EntityExceptions.EntityNotFound("Error al crear DatosPersona")
+        datos_persona_id = row[0]
+
+        cursor.execute(
+            """INSERT INTO "Estudiante" ("FechaNacimiento", "Parentesco", "DatosPersonaId", "RepresentanteId") 
+               VALUES (%s,%s,%s,%s) RETURNING "EstudianteId";""",
+            (data["FechaNacimiento"], data["Parentesco"], datos_persona_id, data["IdRepresentante"])
+        )
+        row = cursor.fetchone()
+        if not row: raise EntityExceptions.EntityNotFound("Error al crear Estudiante")
+        estudiante_id = row[0]
+
+        cursor.execute(
+            """INSERT INTO "EstadoEstudiante" ("EstudianteId", "Estado") 
+               VALUES (%s, %s) RETURNING "EstadoEstudianteId";""",
+            (estudiante_id, 'revision')
+        )
+
+        cursor.execute(
+            "CALL registrar_curso_estudiante(%s, %s)",
+            (estudiante_id, data["IdCurso"])
+        )
+        
+        # Auditoría (Simplificada)
+        cursor.execute(
+            """INSERT INTO "Auditoria" ("UsuarioId", "Descripcion", "Accion") 
+               VALUES ((SELECT "UsuarioId" FROM "Usuario" WHERE "DatosPersona" = %s), %s, %s)""",
+            (data["IdRepresentante"], "Se registro un nuevo estudiante", "Registro")
+        )
+
+        # 5. Procesamiento de Archivos (CORRECCIÓN B: Antes del Commit)
+        # Usamos el estudiante_id que obtuvimos de la transacción abierta
+        
+        # --- FOTO CARNET ---
+        foto = files["FotoCarnet"]
+        # Asumo que tus funciones auxiliares (get_format, convert_to_webp) existen y funcionan
+        if get_format(foto.filename) not in ["png", "jpg", "jpeg", "webp"]:
+            raise ValidationError("Formato de foto inválido")
+        elif get_format(foto.filename) != "webp":
+            foto = convert_to_webp(foto)
+        
+        nombre_carnet = f"carnet-{estudiante_id}.webp"
+        full_path_carnet = os.path.join(app.config["UPLOAD_FOLDER"], nombre_carnet)
+        resized_foto = resize(foto)
+        resized_foto.save(full_path_carnet)
+        
+        # --- DOCUMENTOS PDF ---
+        # Definimos los nombres y rutas
+        if files["DocDni"]:
+            nombre_dni = f"dni-{estudiante_id}.pdf"
+            full_path_dni = os.path.join(app.config["UPLOAD_FOLDER"], nombre_dni)
+            files["DocDni"].save(full_path_dni)
+
+        nombre_partida = f"partida-nacimiento-{estudiante_id}.pdf"
+        full_path_partida = os.path.join(app.config["UPLOAD_FOLDER"], nombre_partida)
+        files["DocPartidaNacimiento"].save(full_path_partida)
+
+        nombre_notas = f"notas-certificadas-{estudiante_id}.pdf"
+        full_path_notas = os.path.join(app.config["UPLOAD_FOLDER"], nombre_notas)
+        files["DocNotasCertificadas"].save(full_path_notas)
+
+        # 6. COMMIT FINAL
+        # Solo llegamos aquí si la DB insertó Y los archivos se guardaron en disco.
+        connection.commit()
+
+        return jsonify({"message": "Estudiante registrado exitosamente"}), 201
+
     except Exception as err:
+        # 7. Manejo de Errores y Limpieza (Rollback + Borrado físico)
+        connection.rollback()
+        
+        # Borrar archivos si se llegaron a crear (CORRECCIÓN C: Variables seguras)
+        files_to_delete = [full_path_carnet, full_path_dni, full_path_partida, full_path_notas]
+        for path in files_to_delete:
+            if path and os.path.exists(path):
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass # Loggear esto en producción
+
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
-    
+        
+    finally:
+        cursor.close()
+
+
 @student_bp.route("/students/create/parent_ci", methods=["POST"])
 def create_parent_by_ci():
     try:

@@ -49,7 +49,7 @@ class DatosPersonaRep(Repository):
         cursor = self.db_connection.cursor()
         cursor.execute("SELECT * FROM \"DatosPersona\" OFFSET %s LIMIT %s", (offset or 0, limit or 5))
         rows = cursor.fetchall()
-        cursor.close();
+        cursor.close()
         if rows == None or len(rows) == 0:
             raise EntityExceptions.EntityNotFound("No se encontraron datos")
         return [DatosPersona(r) for r in rows]
