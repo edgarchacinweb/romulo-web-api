@@ -62,6 +62,17 @@ def create():
         if data["Parentesco"] not in allowed_parentesco:
             raise ValidationError(f"\"{data['Parentesco']}\" no es un parentesco válido")
 
+        # Validar estudiante duplicado
+        cursor.execute(
+            """SELECT e."EstudianteId" FROM "Estudiante" AS e
+                INNER JOIN "DatosPersona" AS dp ON e."DatosPersonaId"=dp."DatosPersonaId"
+                WHERE dp."Nombre"=%s AND dp."Apellido"=%s AND dp."Sexo"=%s AND e."RepresentanteId"=%s AND e."FechaNacimiento"=%s AND e."Parentesco"=%s;""",
+            (data["Nombre"], data["Apellido"], data["Genero"], data["IdRepresentante"], data["FechaNacimiento"], data["Parentesco"])
+        )
+        row = cursor.fetchone()
+        if row:
+            raise ValidationError("El estudiante ya existe")
+
         # Validación de existencia de archivos
         required_files = ["FotoCarnet", "DocPartidaNacimiento", "DocNotasCertificadas"]
         for file_key in required_files:
