@@ -1,4 +1,5 @@
 from flask import Blueprint, jsonify, request, Response
+from database.connection import Connection
 from database.Usuario import UsuarioRep
 from utils.exceptions import *
 from models.Usuario import Usuario, Rol
@@ -11,6 +12,10 @@ from utils.handler import exception_handler
 from utils.email import send_email
 from database.Auditoria import AuditoriaRep
 from database.DatosPersona import DatosPersonaRep
+from utils.config import app
+from utils.image import convert_to_webp, resize, get_format
+from pathlib import Path
+from PIL import Image
 import os
 
 rep = UsuarioRep()
@@ -295,3 +300,104 @@ def modify_password():
     except Exception as err:
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
+
+@user_bp.route("/user/parent/update", methods=["PATCH"])
+def update_parent():
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+    try:
+        payload = Security.verify_token(request.headers)
+
+        if not payload or payload["role"] != Rol.PARENT.name:
+            raise Unauthorized()
+        elif not Validations.is_uuid(payload['id']):
+            raise InvalidId(f"ID inválido: {payload['id']}")
+
+        data = request.form
+        files = request.files
+
+        data_to_update = {}
+
+        if not any(key in data for key in ("Telefono", "Ocupacion", "Clave")):
+            raise MissingEntityData("No hay datos que actualizar")
+
+        if "Telefono" in data and len(data["Telefono"]) > 0 and not Validations.is_phone(data["Telefono"]):
+            raise ValidationError("El teléfono no es válido")
+        if "Ocupacion" in data and len(data["Ocupacion"]) > 0 and not Validations.is_occupation(data["Ocupacion"]):
+            raise ValidationError("La ocupación no es válida")
+        if "Clave" in data:
+            if len(data["Clave"]) > 0 and not Validations.is_password(data["Clave"]):
+                raise ValidationError("La contraseña no es válida")
+            elif "RClave" not in data:
+                raise ValidationError("Debes enviar la contraseña de confirmación")
+            elif data["Clave"] != data["RClave"]:
+                raise ValidationError("Las contraseñas no coinciden")
+
+            # Obtener la contraseña actual
+            cursor.execute("SELECT Clave FROM Usuario WHERE Id = %s", (payload["id"],))
+            result = cursor.fetchone()
+            
+            if not result:
+                raise EntityNotFound("No se encontró el usuario")
+            
+            if not bcrypt.check_password_hash(result["Clave"], data["VClave"]):
+                raise ValidationError("La contraseña no es válida")
+
+            new_password = bcrypt.generate_password_hash(data["Clave"], int(os.getenv("pwd_rounds"))).decode("utf8")
+            cursor.execute("UPDATE Usuario SET Clave = %s WHERE Id = %s", (new_password, payload["id"]))
+
+        if "Telefono" in data and len(data["Telefono"]) > 0:
+            data_to_update["Telefono"] = data["Telefono"]
+        if "Ocupacion" in data and len(data["Ocupacion"]) > 0:
+            data_to_update["Ocupacion"] = data["Ocupacion"]
+
+        cursor.execute("SELECT \"DatosPersona\" FROM \"Usuario\" WHERE \"UsuarioId\" = %s", (payload["id"],))
+        datos_persona_id = cursor.fetchone()
+
+        cursor.execute("UPDATE \"DatosPersona\" SET " + ", ".join([f"\"{key}\" = %s" for key in data_to_update]) + " WHERE \"DatosPersonaId\" = %s", (*data_to_update.values(), datos_persona_id))
+
+        # Obtener documento PDF del DNI y foto de perfil
+        if "DNI" in files:
+            file = files["DNI"]
+            if file.filename == "":
+                raise ValidationError("Debes enviar el documento PDF del DNI")
+            elif not Validations.is_pdf(file):
+                raise ValidationError("El documento debe ser un PDF")
+            
+            # Guardar el documento PDF del DNI
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], f"dni-{payload['id']}.pdf"))
+
+        if "Foto" in files:
+            file = files["Foto"]
+            allowed_extensions = ["png", "jpg", "jpeg", "webp"]
+            img_extension = get_format(file.filename)
+            if file.filename == "":
+                raise ValidationError("Debes enviar la foto de perfil")
+            elif img_extension not in allowed_extensions:
+                raise ValidationError("La foto debe ser una imagen válida")
+            
+            # Convertir foto carnet a WEBP y redimensionarla
+            img_converted = convert_to_webp(file)
+            img = resize(img_converted, 500)
+
+            # Guardar la foto de perfil
+            img.save(os.path.join(app.config['UPLOAD_FOLDER'], f"carnet-{payload['id']}.webp"))
+
+            conn.commit()
+        return Response(status=200)
+    except Exception as err:
+        conn.rollback()
+
+        # Eliminar archivos subidos al servidor
+        dni_path = Path(os.path.join(app.config['UPLOAD_FOLDER'], f"dni-{payload['id']}.pdf"))
+        carnet_path = Path(os.path.join(app.config['UPLOAD_FOLDER'], f"carnet-{payload['id']}.webp"))
+
+        if dni_path.exists():
+            dni_path.unlink()
+        if carnet_path.exists():
+            carnet_path.unlink()
+
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
