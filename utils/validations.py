@@ -5,13 +5,18 @@ from PIL import Image
 
 class Validations():
     @classmethod
+    def is_occupation(self, occupation: str):
+        pattern = r"^[a-zA-ZÀ-ÿ\u00f1\u00d1]+(\s?[a-zA-ZÀ-ÿ\u00f1\u00d1\.\-]+)*$"
+        return bool(re.match(pattern, occupation))
+    
+    @classmethod
     def is_email(self, email:str):
         pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
         return bool(re.match(pattern, email))
     
     @classmethod
     def is_password(self, password:str):
-        pattern = r'[A-Za-zÁÉÍÓÚáéíóúÑñ0-9.#!_¡-]{5,30}$'
+        pattern = r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[$@$!%*?&._-])[A-Za-z\d$@$!%*?&._-]{8,}$'
         return bool(re.match(pattern, password))
     
     @classmethod

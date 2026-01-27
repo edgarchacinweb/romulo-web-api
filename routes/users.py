@@ -109,8 +109,6 @@ def login():
 
         if not "Email" in data or not "Clave" in data:
             raise MissingEntityData("Falta correo electrónico o contraseña.")
-        elif not Validations.is_password(data["Clave"]):
-            raise ValidationError("La contraseña introducida no cumple con los parámetros de seguridad")
         
         auth = rep.get_by_email(data["Email"])
         if not auth:
@@ -305,6 +303,8 @@ def modify_password():
 def update_parent():
     conn = Connection().get_connection()
     cursor = conn.cursor()
+    have_dni = False
+    have_carnet = False
     try:
         payload = Security.verify_token(request.headers)
 
@@ -334,22 +334,24 @@ def update_parent():
                 raise ValidationError("Las contraseñas no coinciden")
 
             # Obtener la contraseña actual
-            cursor.execute("SELECT Clave FROM Usuario WHERE Id = %s", (payload["id"],))
+            cursor.execute("SELECT \"Clave\" FROM \"Usuario\" WHERE \"UsuarioId\" = %s", (payload["id"],))
             result = cursor.fetchone()
             
             if not result:
                 raise EntityNotFound("No se encontró el usuario")
             
-            if not bcrypt.check_password_hash(result["Clave"], data["VClave"]):
-                raise ValidationError("La contraseña no es válida")
+            if not bcrypt.check_password_hash(result[0], data["VClave"]):
+                raise ValidationError("La contraseña actual no es válida")
 
             new_password = bcrypt.generate_password_hash(data["Clave"], int(os.getenv("pwd_rounds"))).decode("utf8")
-            cursor.execute("UPDATE Usuario SET Clave = %s WHERE Id = %s", (new_password, payload["id"]))
+            cursor.execute("UPDATE \"Usuario\" SET \"Clave\" = %s WHERE \"UsuarioId\" = %s", (new_password, payload["id"]))
 
         if "Telefono" in data and len(data["Telefono"]) > 0:
             data_to_update["Telefono"] = data["Telefono"]
         if "Ocupacion" in data and len(data["Ocupacion"]) > 0:
             data_to_update["Ocupacion"] = data["Ocupacion"]
+        if "Direccion" in data and len(data["Direccion"]) > 0:
+            data_to_update["Direccion"] = data["Direccion"]
 
         cursor.execute("SELECT \"DatosPersona\" FROM \"Usuario\" WHERE \"UsuarioId\" = %s", (payload["id"],))
         datos_persona_id = cursor.fetchone()
@@ -358,6 +360,7 @@ def update_parent():
 
         # Obtener documento PDF del DNI y foto de perfil
         if "DNI" in files:
+            have_dni = True
             file = files["DNI"]
             if file.filename == "":
                 raise ValidationError("Debes enviar el documento PDF del DNI")
@@ -368,6 +371,7 @@ def update_parent():
             file.save(os.path.join(app.config['UPLOAD_FOLDER'], f"dni-{payload['id']}.pdf"))
 
         if "Foto" in files:
+            have_carnet = True
             file = files["Foto"]
             allowed_extensions = ["png", "jpg", "jpeg", "webp"]
             img_extension = get_format(file.filename)
@@ -383,7 +387,7 @@ def update_parent():
             # Guardar la foto de perfil
             img.save(os.path.join(app.config['UPLOAD_FOLDER'], f"carnet-{payload['id']}.webp"))
 
-            conn.commit()
+        conn.commit()
         return Response(status=200)
     except Exception as err:
         conn.rollback()
@@ -392,9 +396,9 @@ def update_parent():
         dni_path = Path(os.path.join(app.config['UPLOAD_FOLDER'], f"dni-{payload['id']}.pdf"))
         carnet_path = Path(os.path.join(app.config['UPLOAD_FOLDER'], f"carnet-{payload['id']}.webp"))
 
-        if dni_path.exists():
+        if have_dni and dni_path.exists():
             dni_path.unlink()
-        if carnet_path.exists():
+        if have_carnet and carnet_path.exists():
             carnet_path.unlink()
 
         ex = exception_handler(err)
