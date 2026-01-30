@@ -277,27 +277,37 @@ def filter():
 
 @user_bp.route("/user/modify/password", methods=["PATCH"])
 def modify_password():
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
     try:
-        payload = Security.verify_token(request.headers)
-
         data = request.get_json()
 
         if not data or "Password" not in data:
             raise ValidationError("Debes enviar la nueva contraseña")
         elif "RPassword" not in data:
             raise ValidationError("Debes enviar la contraseña de confirmación")
+        elif "Email" not in data:
+            raise ValidationError("Debes enviar el correo electrónico")
+        elif not Validations.is_email(data["Email"]):
+            raise ValidationError("El correo electrónico no es válido")
         
         password, rpassword = data["Password"], data["RPassword"]
 
         if (password != rpassword):
             raise ValidationError("Las contraseñas no coinciden")
         
-        rep.update(payload["id"], {"Password": bcrypt.generate_password_hash(password, int(os.getenv("pwd_rounds"))).decode("utf8")})
+        new_password = bcrypt.generate_password_hash(password, int(os.getenv("pwd_rounds"))).decode("utf8")
+        cursor.execute("UPDATE \"Usuario\" SET \"Clave\"=%s WHERE \"Email\"=%s", (new_password, data["Email"]))
+        conn.commit()
+
+        logger.info(f"Contraseña modificada para el usuario con correo {data['Email']}")
 
         return Response(status=200)
     except Exception as err:
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
 
 @user_bp.route("/user/parent/update", methods=["PATCH"])
 def update_parent():

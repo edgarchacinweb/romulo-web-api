@@ -1,72 +1,134 @@
-<html>
-    <head>
-        <style>
-            div {
-                width: 100%;
-                height: 100%;
-                background-color: #9b9b9b;
-                padding: 10px 0 5px;
-                /* border-radius: 15px; */
-                box-sizing: border-box;
-            }
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+    <title>Static Template</title>
 
-            h1 {
-                text-align: center;
-                font-size: 25px;
-                color: #333333;
-            }
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body
+    style="
+      margin: 0;
+      font-family: 'Poppins', sans-serif;
+      background: #ffffff;
+      font-size: 14px;
+    "
+  >
+    <div
+      style="
+        max-width: 680px;
+        margin: 0 auto;
+        padding: 45px 30px 60px;
+        background: #f4f7ff;
+        background-image: url(https://archisketch-resources.s3.ap-northeast-2.amazonaws.com/vrstyler/1661497957196_595865/email-template-background-banner);
+        background-repeat: no-repeat;
+        background-size: 800px 452px;
+        background-position: top center;
+        font-size: 14px;
+        color: #434343;
+      "
+    >
+      <header>
+        <table style="width: 100%;">
+          <tbody>
+            <tr style="height: 0;">
+              <td>
+              </td>
+              <td style="text-align: right;">
+                <span
+                  style="font-size: 16px; line-height: 30px; color: #ffffff;"
+                  >{{ date }}</span
+                >
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </header>
 
-            img {
-                display: block;
-                margin: 0 auto 25px;
-                width: 60%;
-                min-width: 300px;
-                max-width: 700px;
-            }
-
-            .code {
-                color: #ffffff;
-                background: #b8b8b8;
-                border: 5px dashed #b19b9b;
-                padding: 10px 0;
-                width: 200px;
-                display: block;
-                text-align: center;
-                font-size: 25px;
-                font-weight: bold;
-                letter-spacing: 5px;
-                margin: 0 auto;
-            }
-
-            footer {
-                margin-top: 35px;
-                text-align: center;
-            }
-
-            footer p {
-                padding: 0 10px;
-                font-size: 10px;
-                color: #33333399;
-                display: inline-block;
-                margin: 0 auto;
-                width: 100%;
-                max-width: 350px;
-            }
-        </style>
-    </head>
-    <body>
-        <div>
-            <img src="cid:logo" alt="logo" />
-            <h1>Código de verificación</h1>
-            <p class="code">{{message}}</p>
-            <footer>
-                <p>
-                    El presente codigo de verificación está autorizado únicamente para el uso del usuario
-                    receptor, bajo ningún concepto debe ser compartido con terceros. Este código de verificación
-                    tiene una validez de 5 minutos, pasado ese tiempo quedará inutilizable, por lo que deberá
-                    volver a solicitarlo nuevamente.
-                </p>
-            </footer>
+      <main>
+        <div
+          style="
+            margin: 0;
+            margin-top: 70px;
+            padding: 92px 30px 115px;
+            background: #ffffff;
+            border-radius: 30px;
+            text-align: center;
+          "
+        >
+          <div style="width: 100%; max-width: 489px; margin: 0 auto;">
+            <h1
+              style="
+                margin: 0;
+                font-size: 24px;
+                font-weight: 500;
+                color: #1f1f1f;
+              "
+            >
+              Código de verificación
+            </h1>
+            <p
+              style="
+                margin: 0;
+                margin-top: 17px;
+                font-weight: 500;
+                letter-spacing: 0.56px;
+              "
+            >
+              Hola, aquí tienes tu código de verificación para proceder en el proceso de
+              cambio de contraseña, el cuál expira luego de haber pasado 
+              <span style="font-weight: 600; color: #1f1f1f;">15 minutos</span>.
+              No compartas este código con ninguna otra persona, ni siquiera con personal del
+              Liceo Nacional Rómulo Gallegos. Solo tú estás autorizado para usarlo.
+            </p>
+            <p
+              style="
+                margin: 0;
+                margin-top: 60px;
+                font-size: 18px;
+                font-weight: 600;
+                letter-spacing: 25px;
+                color: #ba3d4f;
+              "
+            >
+            {{ otp }}
+            </p>
+          </div>
         </div>
-    </body>
+      </main>
+
+      <footer
+        style="
+          width: 100%;
+          max-width: 490px;
+          margin: 20px auto 0;
+          text-align: center;
+          border-top: 1px solid #e6ebf1;
+        "
+      >
+        <p
+          style="
+            margin: 0;
+            margin-top: 40px;
+            font-size: 16px;
+            font-weight: 600;
+            color: #434343;
+          "
+        >
+          Liceo Nacional Rómulo Gallegos
+        </p>
+        <p style="margin: 0; margin-top: 8px; color: #434343;">
+          Av. Rómulo Gallegos y Av. Bolívar, Caracas, Venezuela
+        </p>
+        <p style="margin: 0; margin-top: 16px; color: #434343;">
+          Copyright © 2026 Liceo Nacional Rómulo Gallegos. Todos los derechos reservados.
+        </p>
+      </footer>
+    </div>
+  </body>
 </html>

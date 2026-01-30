@@ -1,60 +1,27 @@
 # import resend
-import base64
 from utils import logger
 from flask import render_template
 from utils.config import app
 from os import getenv
-from os import path
-from flask_mail import Message, Mail
+from flask_mail import Mail, Message
 
 # Setting email sender
-app.config["MAIL_SERVER"] = getenv("otp_smtp")
-app.config["MAIL_PORT"] = int(getenv("otp_port"))
-app.config["MAIL_USE_TLS"] = True
-app.config["MAIL_USERNAME"] = getenv("otp_email")
-app.config["MAIL_PASSWORD"] = getenv("otp_password")
-app.config["RESEND_KEY"] = getenv("resend_api_key")
+app.config['MAIL_SERVER'] = getenv("mail_server")
+app.config['MAIL_PORT'] = getenv("mail_port")
+app.config['MAIL_USE_TLS'] = getenv("mail_tls")
+app.config['MAIL_USERNAME'] = getenv("mail_user")
+app.config['MAIL_PASSWORD'] = getenv("mail_pwd")
+app.config['MAIL_DEFAULT_SENDER'] = getenv("mail_user")
 
 mail = Mail(app)
 
-def send_email(to, subject, template, message):
+def send_email(to, subject, template, code):
     try:
-        with app.open_resource(path.join(app.config["PUBLIC_DIR"], "logo.png"), "rb") as fp:
-            base_image = base64.b64encode(fp.read()).decode("utf-8")
-
-        html = render_template(f"{template}.html", message=message)
-
-        msg = Message(
-            subject=subject,
-            recipients=[app.config['MAIL_USERNAME']],
-            html=html
-        )
-
+        msg = Message(subject, sender=app.config['MAIL_USERNAME'], recipients=[to])
+        msg.html = template
+        msg.body = f"Código de verificación: {code}"
         mail.send(msg)
-    except Exception as error:
-        raise Exception("Error al enviar el correo electronico")
+    except Exception as err:
+        logger.error(err, "Error al enviar el correo")
+        raise err
 
-    # params = {
-    #     "from": f"Liceo Nacional Don Rómulo Gallegos <{app.config['MAIL_USERNAME']}>",
-    #     "to": [to],
-    #     "subject": subject,
-    #     "html": html,
-    #     "attachments": [
-    #         {
-    #             "filename": "logo.png",
-    #             "content": base_image,
-    #             "headers": {
-    #                 "Content-ID": "<logo>",
-    #                 "Content-Disposition": "inline"
-    #             }
-    #         }
-    #     ]
-    # }
-
-    # resend.api_key = app.config["RESEND_KEY"]
-    # response = resend.Emails.send(params)
-    # logger.Logger().debug(response, "Email response")
-
-    # if not response:
-    #     raise Exception("Ocurrió un error interno al intentar envíar el correo electrónico")
-    
