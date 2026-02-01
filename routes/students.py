@@ -412,3 +412,32 @@ def count():
     except Exception as err:
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
+
+@student_bp.route("/students/count/by_parent", methods=["GET"])
+def get_by_parent():
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+
+    try:
+        payload = Security.verify_token(request.headers)
+
+        if not payload or payload["role"] != Rol.PARENT.name:
+            raise Unauthorized()
+
+        parent_id = payload["id"]
+
+        if not Validations.is_uuid(parent_id):
+            raise InvalidId(f"ID inválido: {parent_id}")
+        
+        cursor.execute("SELECT COUNT(\"EstudianteId\") FROM \"Estudiante\" WHERE \"RepresentanteId\"=%s;", (parent_id,))
+        count = cursor.fetchone()[0]
+
+        if not count:
+            count = 0
+        
+        return jsonify({"count": count}), 200
+    except Exception as err:
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
