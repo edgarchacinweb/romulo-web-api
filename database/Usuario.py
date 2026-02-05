@@ -39,7 +39,7 @@ class UsuarioRep(Repository):
             if not Validations.is_uuid(id):
                 raise InvalidId(f"Identificador del usuario inválido")
             cursor = self.db_connection.cursor()
-            sql = "SELECT * FROM obtener_usuario(%s);";
+            sql = "SELECT * FROM \"Usuario\" WHERE \"UsuarioId\"=%s";
             self.logger.debug(sql, "SQL")
             cursor.execute(sql, (id,))
             user = cursor.fetchone()

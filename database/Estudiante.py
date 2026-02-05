@@ -251,7 +251,7 @@ class EstudianteRep(Repository):
     def count(self):
         try:
             cursor = self.db_connection.cursor()
-            sql = "SELECT * FROM contar_estudiantes();"
+            sql = "SELECT COUNT(\"EstudianteId\") FROM \"CursoEstudiante\" WHERE \"PeriodoEscolarId\"=(SELECT \"PeriodoEscolarId\" FROM \"PeriodoEscolar\" ORDER BY \"FechaInicio\" DESC LIMIT 1);"
             self.logger.debug(sql, "SQL")
             cursor.execute(sql)
             data = cursor.fetchone()

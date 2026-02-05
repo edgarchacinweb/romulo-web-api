@@ -9,7 +9,7 @@ def exception_handler(exception: Exception) -> Tuple[Dict[str,str], int]:
     Logger().error(traceback.format_exc())
     msg: Dict[str, str] = {"message": exception.__str__()}
 
-    if isinstance(exception, (MissingEntityData, ValidationError, InvalidFileType, UploadFileError, InvalidId, InvalidFileType, ValueError)):
+    if isinstance(exception, (MissingEntityData, ValidationError, InvalidFileType, UploadFileError, InvalidId, InvalidFileType, EmailException, ValueError)):
         code = 400
     elif isinstance(exception, UniqueViolation):
         code = 400

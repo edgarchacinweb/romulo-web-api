@@ -19,6 +19,7 @@ from models.Curso import Curso
 from utils.handler import exception_handler
 from datetime import datetime
 from utils.config import app
+from utils.helpers import number_to_letter
 import os
 
 rep = EstudianteRep()
@@ -136,10 +137,11 @@ def create():
         
         # --- DOCUMENTOS PDF ---
         # Definimos los nombres y rutas
-        if files["DocDni"]:
+        docDni = files.get("DocDni")
+        if docDni:
             nombre_dni = f"dni-{estudiante_id}.pdf"
             full_path_dni = os.path.join(app.config["UPLOAD_FOLDER"], nombre_dni)
-            files["DocDni"].save(full_path_dni)
+            docDni.save(full_path_dni)
 
         nombre_partida = f"partida-nacimiento-{estudiante_id}.pdf"
         full_path_partida = os.path.join(app.config["UPLOAD_FOLDER"], nombre_partida)
@@ -436,6 +438,48 @@ def get_by_parent():
             count = 0
         
         return jsonify({"count": count}), 200
+    except Exception as err:
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
+
+@student_bp.route("/students/by_parent/<string:parent_id>", methods=["GET"])
+def get_all_by_parent(parent_id: str):
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+    try:
+        payload = Security.verify_token(request.headers)
+
+        if not payload or payload["role"] != Rol.PARENT.name:
+            raise Unauthorized()
+
+        if not Validations.is_uuid(parent_id):
+            raise InvalidId(f"ID inválido: {parent_id}")
+        
+        cursor.execute("SELECT * FROM \"CursoEstudiante\" AS ce INNER JOIN \"Curso\" AS c ON c.\"CursoId\"=ce.\"CursoId\" INNER JOIN \"Estudiante\" AS e ON ce.\"EstudianteId\"=e.\"EstudianteId\" INNER JOIN \"DatosPersona\" AS dp ON e.\"DatosPersonaId\"=dp.\"DatosPersonaId\" INNER JOIN \"EstadoEstudiante\" AS ee ON ee.\"EstudianteId\"=e.\"EstudianteId\" WHERE e.\"RepresentanteId\"=%s;", (parent_id,))
+        students = cursor.fetchall()
+        logger.debug(students, "students")
+
+        return jsonify([{
+            "EstudianteId": s[0],
+            "FechaNacimiento": s[8],
+            "Curso": {
+                "CursoId": s[1],
+                "Grado": s[6],
+                "Seccion": number_to_letter(s[2])
+            },
+            "DatosPersona": {
+                "Nombre": s[15],
+                "Apellido": s[16],
+                "Sexo": s[17],
+                "Cedula": s[18]
+            },
+            "EstadoEstudiante": {
+                "EstadoEstudianteId": s[24],
+                "Estado": s[26]
+            }
+        } for s in students]), 200
     except Exception as err:
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]

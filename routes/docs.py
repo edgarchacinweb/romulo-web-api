@@ -7,7 +7,7 @@ from utils.handler import exception_handler
 from utils.validations import Validations
 from utils.image import resize, get_format
 from PIL import Image
-from utils.config import     app
+from utils.config import app
 from pathlib import Path
 from utils.Security import Security
 from models.Usuario import Rol
@@ -137,12 +137,12 @@ def create_doc(ci: str):
 def get_docs(resource: str = ""):
     try:
         upload_folder: str = app.config["UPLOAD_FOLDER"]
-        url = f"{upload_folder}/{resource}."
+        url = f"{upload_folder}/{resource}"
 
         resource_url: Path = Path(url)
         img_format = get_format(resource)
 
-        if not resource_url.is_file():
+        if not resource_url.exists():
             raise EntityNotFound("No se encontró ninguna imagen o documento asociada al ID")
 
         return send_file(resource_url, mimetype="image/webp" if img_format == "webp" else "application/pdf")
