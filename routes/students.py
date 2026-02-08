@@ -485,3 +485,89 @@ def get_all_by_parent(parent_id: str):
         return jsonify(ex[0]), ex[1]
     finally:
         cursor.close()
+
+@student_bp.route("/students/filter", methods=["POST"])
+def filter_students():
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+    try:
+        payload = Security.verify_token(request.headers)
+
+        if not payload or payload["role"] != Rol.ADMIN.name:
+            raise Unauthorized()
+        
+        data = request.get_json()
+        
+        if "CursoId" in data and not Validations.is_uuid(data["CursoId"]):
+            raise ValidationError("El ID del curso es inválido.")
+        elif "Estado" in data and not data["Estado"] in ("revision", "inscrito", "retirado", "graduado"):
+            raise ValidationError("El estado del estudiante es inválido.")
+        elif "Busqueda" in data and not Validations.is_name(data["Busqueda"]) and not Validations.is_ci(data["Busqueda"]):
+            raise ValidationError("La busqueda ingresada no es un nombre ni una cédula.")
+        
+        query = """SELECT * FROM "EstadoEstudiante" AS ee
+                    INNER JOIN "Estudiante" AS E ON e."EstudianteId"=ee."EstudianteId"
+                    INNER JOIN "DatosPersona" AS dp ON dp."DatosPersonaId"=e."DatosPersonaId"
+                    INNER JOIN "DatosPersona" AS r ON r."DatosPersonaId"=e."RepresentanteId"
+                    INNER JOIN "CursoEstudiante" AS ce ON ce."EstudianteId"=e."EstudianteId"
+                    INNER JOIN "Curso" AS c ON c."CursoId"=ce."CursoId"
+                    INNER JOIN "Usuario" AS u ON u."DatosPersona"=r."DatosPersonaId" """
+        
+        if "CursoId" in data or "Estado" in data or "Busqueda" in data:
+            query += "WHERE "
+
+        if "CursoId" in data and data["CursoId"]:
+            query += f"ce.\"CursoId\" = {data['CursoId']} "
+        if "Estado" in data and data["Estado"]:
+            query += f"ee.\"Estado\" = '{data['Estado']}' "
+        if "Busqueda" in data and data["Busqueda"] and Validations.is_ci(data["Busqueda"]):
+            query += f"dp.\"Cedula\" = '{data['Busqueda']}' "
+        elif "Busqueda" in data and data["Busqueda"]:
+            splited_name = data["Busqueda"].split()
+            name = splited_name[0]
+            last_name = splited_name[-1]
+            query += f"(dp.\"Nombre\" LIKE '%{name}%' AND dp.\"Apellido\" LIKE '%{last_name}%') "
+        
+        query += "ORDER BY ee.\"FechaCreacion\" DESC;"
+        logger.debug(query, "query")
+        cursor.execute(query)
+        students = cursor.fetchall()
+        logger.debug(students[0], "students")
+
+        return jsonify([{
+            "EstudianteId": s[1],
+            "Estado": s[2],
+            "Activo": s[4],
+            "FechaNacimiento": s[6],
+            "Parentesco": s[7],
+            "DatosPersona": {
+                "DatosPersonaId": s[8],
+                "Nombre": s[13],
+                "Apellido": s[14],
+                "Sexo": s[15],
+                "Cedula": s[16],
+                "Direccion": s[18]
+            },
+            "Representante": {
+                "DatosPersonaId": s[22],
+                "Nombre": s[23],
+                "Apellido": s[24],
+                "Sexo": s[25],
+                "Cedula": s[26],
+                "Telefono": s[27],
+                "Direccion": s[28],
+                "Ocupacion": s[29],
+                "UsuarioId": s[39],
+                "Email": s[40],
+            },
+            "Curso": {
+                "CursoId": s[37],
+                "Grado": s[38],
+                "Seccion": s[34]
+            }
+        } for s in students]), 200
+    except Exception as err:
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
