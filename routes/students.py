@@ -498,11 +498,11 @@ def filter_students():
         
         data = request.get_json()
         
-        if "CursoId" in data and not Validations.is_uuid(data["CursoId"]):
+        if "CursoId" in data and data["CursoId"] and not Validations.is_uuid(data["CursoId"]):
             raise ValidationError("El ID del curso es inválido.")
         elif "Estado" in data and not data["Estado"] in ("revision", "inscrito", "retirado", "graduado"):
             raise ValidationError("El estado del estudiante es inválido.")
-        elif "Busqueda" in data and not Validations.is_name(data["Busqueda"]) and not Validations.is_ci(data["Busqueda"]):
+        elif "Busqueda" in data and data["Busqueda"] and not Validations.is_name(data["Busqueda"]) and not Validations.is_ci(data["Busqueda"]):
             raise ValidationError("La busqueda ingresada no es un nombre ni una cédula.")
         
         query = """SELECT * FROM "EstadoEstudiante" AS ee
@@ -517,22 +517,25 @@ def filter_students():
             query += "WHERE "
 
         if "CursoId" in data and data["CursoId"]:
-            query += f"ce.\"CursoId\" = {data['CursoId']} "
+            query += f"ce.\"CursoId\" = '{data['CursoId']}' AND "
         if "Estado" in data and data["Estado"]:
-            query += f"ee.\"Estado\" = '{data['Estado']}' "
+            query += f"ee.\"Estado\" = '{data['Estado']}' AND "
         if "Busqueda" in data and data["Busqueda"] and Validations.is_ci(data["Busqueda"]):
-            query += f"dp.\"Cedula\" = '{data['Busqueda']}' "
+            query += f"dp.\"Cedula\" = '{data['Busqueda']}' AND "
         elif "Busqueda" in data and data["Busqueda"]:
             splited_name = data["Busqueda"].split()
             name = splited_name[0]
             last_name = splited_name[-1]
-            query += f"(dp.\"Nombre\" LIKE '%{name}%' AND dp.\"Apellido\" LIKE '%{last_name}%') "
+            query += f"(dp.\"Nombre\" LIKE '%{name}%'"
+            if len(splited_name) > 1:
+                query += f" AND dp.\"Apellido\" LIKE '%{last_name}%'"
+            query += ") AND "
         
-        query += "ORDER BY ee.\"FechaCreacion\" DESC;"
+        query = query.rsplit(" AND ", 1)[0] + "ORDER BY ee.\"Activo\" DESC, ee.\"FechaCreacion\" DESC;"
         logger.debug(query, "query")
         cursor.execute(query)
         students = cursor.fetchall()
-        logger.debug(students[0], "students")
+        logger.debug(query, "students")
 
         return jsonify([{
             "EstudianteId": s[1],
