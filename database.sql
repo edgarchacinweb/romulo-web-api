@@ -63,15 +63,6 @@ CREATE TABLE "Materia" (
 "FechaCreacion" TIMESTAMP DEFAULT clock_timestamp()
 );
 
-CREATE TABLE "Horario" (
-"HorarioId" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-"CursoId" UUID NOT NULL,
-"PeriodoEscolarId" UUID NOT NULL,
-"Seccion" SMALLINT NOT NULL,
-"Activo" BOOLEAN DEFAULT TRUE,
-"FechaCreacion" TIMESTAMP DEFAULT clock_timestamp()
-);
-
 CREATE TABLE "BloqueHorario" (
 "BloqueHorarioId" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
 "HoraInicio" TIME NOT NULL,
@@ -80,14 +71,17 @@ CREATE TABLE "BloqueHorario" (
 "FechaCreacion" TIMESTAMP DEFAULT clock_timestamp()
 );
 
-CREATE TABLE "HorarioItem" (
-"HorarioItemId" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+CREATE TABLE "Horario" (
+"HorarioId" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
 "Dia" DIA NOT NULL,
 "DocenteId" UUID NULL,
 "Actividad" VARCHAR(20) NULL,
 "Activo" BOOLEAN DEFAULT TRUE,
-"HorarioId" UUID NOT NULL,
 "BloqueHorarioId" UUID NOT NULL,
+"CursoId" UUID NOT NULL,
+"PeriodoEscolarId" UUID NOT NULL,
+"MateriaId" UUID NOT NULL,
+"Seccion" INTEGER NOT NULL,
 "FechaCreacion" TIMESTAMP DEFAULT clock_timestamp()
 );
 
@@ -208,11 +202,12 @@ ALTER TABLE "Asistencia" ADD FOREIGN KEY ("EstudianteId") REFERENCES "Estudiante
 ALTER TABLE "CursoEstudiante" ADD FOREIGN KEY ("EstudianteId") REFERENCES "Estudiante" ("EstudianteId");
 ALTER TABLE "CursoEstudiante" ADD FOREIGN KEY ("CursoId") REFERENCES "Curso" ("CursoId");
 ALTER TABLE "CursoEstudiante" ADD FOREIGN KEY ("PeriodoEscolarId") REFERENCES "PeriodoEscolar" ("PeriodoEscolarId");
+ALTER TABLE "PeriodoInscripcion" ADD FOREIGN KEY ("PeriodoEscolarId") REFERENCES "PeriodoEscolar" ("PeriodoEscolarId");
+ALTER TABLE "Horario" AD	D FOREIGN KEY ("DocenteId") REFERENCES "Docente" ("DocenteId");
+ALTER TABLE "Horario" ADD FOREIGN KEY ("BloqueHorarioId") REFERENCES "BloqueHorario" ("BloqueHorarioId");
 ALTER TABLE "Horario" ADD FOREIGN KEY ("CursoId") REFERENCES "Curso" ("CursoId");
 ALTER TABLE "Horario" ADD FOREIGN KEY ("PeriodoEscolarId") REFERENCES "PeriodoEscolar" ("PeriodoEscolarId");
-ALTER TABLE "PeriodoInscripcion" ADD FOREIGN KEY ("PeriodoEscolarId") REFERENCES "PeriodoEscolar" ("PeriodoEscolarId");
-ALTER TABLE "HorarioItem" ADD FOREIGN KEY ("DocenteId") REFERENCES "Docente" ("DocenteId");
-ALTER TABLE "HorarioItem" ADD FOREIGN KEY ("BloqueHorarioId") REFERENCES "BloqueHorario" ("BloqueHorarioId");
+ALTER TABLE "Horario" ADD FOREIGN KEY ("MateriaId") REFERENCES "Materia" ("MateriaId");
 ALTER TABLE "Nota" ADD FOREIGN KEY ("MateriaId") REFERENCES "Materia" ("MateriaId");
 ALTER TABLE "Nota" ADD FOREIGN KEY ("EstudianteId") REFERENCES "Estudiante" ("EstudianteId");
 ALTER TABLE "Estudiante" ADD FOREIGN KEY ("DatosPersonaId") REFERENCES "DatosPersona" ("DatosPersonaId");
@@ -228,6 +223,17 @@ CREATE INDEX Cedula_index ON "DatosPersona" ("Cedula");
 
 INSERT INTO "Curso" ("Grado") VALUES (1), (2), (3), (4), (5);
 INSERT INTO "Usuario" ("Email", "Clave", "Rol") VALUES ('romulogallegosproyecto@gmail.com', '$2b$10$w75IUe68HwWRQGXmLGVQmumMWLHcubkDLCEsBq1lmNrKvNgflcOuO', 'administrador');
+
+INSERT INTO "Materia" ("Nombre")
+VALUES
+('Matemáticas'),
+('Castellano'),
+('G.H.S'),
+('Educación Física'),
+('Inglés'),
+('Biología'),
+('Química'),
+('Física');
 
 -- Procedimientos almacenados
 CREATE PROCEDURE registrar_curso_estudiante(estudiante_id UUID, curso_id UUID) AS $$
