@@ -203,7 +203,7 @@ ALTER TABLE "CursoEstudiante" ADD FOREIGN KEY ("EstudianteId") REFERENCES "Estud
 ALTER TABLE "CursoEstudiante" ADD FOREIGN KEY ("CursoId") REFERENCES "Curso" ("CursoId");
 ALTER TABLE "CursoEstudiante" ADD FOREIGN KEY ("PeriodoEscolarId") REFERENCES "PeriodoEscolar" ("PeriodoEscolarId");
 ALTER TABLE "PeriodoInscripcion" ADD FOREIGN KEY ("PeriodoEscolarId") REFERENCES "PeriodoEscolar" ("PeriodoEscolarId");
-ALTER TABLE "Horario" AD	D FOREIGN KEY ("DocenteId") REFERENCES "Docente" ("DocenteId");
+ALTER TABLE "Horario" ADD FOREIGN KEY ("DocenteId") REFERENCES "Docente" ("DocenteId");
 ALTER TABLE "Horario" ADD FOREIGN KEY ("BloqueHorarioId") REFERENCES "BloqueHorario" ("BloqueHorarioId");
 ALTER TABLE "Horario" ADD FOREIGN KEY ("CursoId") REFERENCES "Curso" ("CursoId");
 ALTER TABLE "Horario" ADD FOREIGN KEY ("PeriodoEscolarId") REFERENCES "PeriodoEscolar" ("PeriodoEscolarId");
