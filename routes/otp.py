@@ -41,7 +41,7 @@ def otp(email: str):
 
         code = Security.generate_otp(6)
         email_template = render_template("otp-email.html", otp=code, date=datetime.now().strftime("%A %d/%m/%Y"))
-        send_email(email, "Código de verificación", email_template, code)
+        send_email(email, "Código de verificación", email_template, f"Código de verificación: {code}")
 
         return jsonify({"otp": code}), 200
     except Exception as err:

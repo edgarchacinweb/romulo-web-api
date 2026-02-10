@@ -145,7 +145,7 @@ def get_docs(resource: str = ""):
         if not resource_url.exists():
             raise EntityNotFound("No se encontró ninguna imagen o documento asociada al ID")
 
-        return send_file(resource_url, mimetype="image/webp" if img_format == "webp" else "application/pdf")
+        return send_file(resource_url, mimetype="image/webp" if img_format == "webp" else "application/pdf", as_attachment=img_format == "pdf")
     except Exception as err:
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]

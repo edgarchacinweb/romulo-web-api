@@ -17,11 +17,11 @@ app.config['MAIL_DEFAULT_SENDER'] = getenv("MAIL_USERNAME")
 mail = Mail(app)
 logger = Logger()
 
-def send_email(to, subject, template, code):
+def send_email(to, subject, template, body):
     try:
         msg = Message(subject, sender=app.config['MAIL_USERNAME'], recipients=[to])
         msg.html = template
-        msg.body = f"Código de verificación: {code}"
+        msg.body = body
         mail.send(msg)
     except Exception as err:
         logger.error("Error al enviar el correo electrónico")

@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request, Response
+from flask import Blueprint, jsonify, request, Response, render_template
 from werkzeug.utils import secure_filename
 from database.connection import Connection
 from database.Estudiante import EstudianteRep
@@ -20,6 +20,7 @@ from utils.handler import exception_handler
 from datetime import datetime
 from utils.config import app
 from utils.helpers import number_to_letter
+from utils.email import send_email
 import os
 
 rep = EstudianteRep()
@@ -504,6 +505,8 @@ def filter_students():
             raise ValidationError("El estado del estudiante es inválido.")
         elif "Busqueda" in data and data["Busqueda"] and not Validations.is_name(data["Busqueda"]) and not Validations.is_ci(data["Busqueda"]):
             raise ValidationError("La busqueda ingresada no es un nombre ni una cédula.")
+        elif "Seccion" in data and data["Seccion"] and not Validations.is_section(data["Seccion"]):
+            raise ValidationError("La sección es inválida.")
         
         query = """SELECT * FROM "EstadoEstudiante" AS ee
                     INNER JOIN "Estudiante" AS E ON e."EstudianteId"=ee."EstudianteId"
@@ -520,6 +523,8 @@ def filter_students():
             query += f"ce.\"CursoId\" = '{data['CursoId']}' AND "
         if "Estado" in data and data["Estado"]:
             query += f"ee.\"Estado\" = '{data['Estado']}' AND "
+        if "Seccion" in data and data["Seccion"]:
+            query += f"ce.\"Seccion\" = '{data['Seccion']}' AND "
         if "Busqueda" in data and data["Busqueda"] and Validations.is_ci(data["Busqueda"]):
             query += f"dp.\"Cedula\" = '{data['Busqueda']}' AND "
         elif "Busqueda" in data and data["Busqueda"]:
@@ -570,6 +575,74 @@ def filter_students():
             }
         } for s in students]), 200
     except Exception as err:
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
+
+@student_bp.route("/students/approve/<string:student_id>", methods=["PUT"])
+def approve_student(student_id: str):
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+    try:
+        payload = Security.verify_token(request.headers)
+
+        if not payload or payload["role"] != Rol.ADMIN.name:
+            raise Unauthorized()
+
+        if not Validations.is_uuid(student_id):
+            raise InvalidId(f"ID inválido: {student_id}")
+        
+        cursor.execute("UPDATE \"EstadoEstudiante\" SET \"Estado\"='inscrito', \"Activo\"=TRUE WHERE \"EstudianteId\"=%s;", (student_id,))
+        conn.commit()
+
+        return Response(status=204)
+    except Exception as err:
+        conn.rollback()
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
+
+
+@student_bp.route("/students/reject/<string:student_id>", methods=["PUT"])
+def reject_student(student_id: str):
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+    try:
+        payload = Security.verify_token(request.headers)
+
+        if not payload or payload["role"] != Rol.ADMIN.name:
+            raise Unauthorized()
+
+        if not Validations.is_uuid(student_id):
+            raise InvalidId(f"ID inválido: {student_id}")
+
+        data = request.get_json()
+
+        if "Email" not in data or not data["Email"]:
+            raise ValidationError("Debes enviar un email para rechazar al estudiante.")
+        elif "Email" in data and not Validations.is_email(data["Email"]):
+            raise ValidationError("El email es inválido.")
+        elif "Motivo" not in data or not data["Motivo"]:
+            raise ValidationError("Debes enviar un motivo para rechazar al estudiante.")
+        elif "Descripcion" not in data or not data["Descripcion"]:
+            raise ValidationError("Debes enviar una descripción para rechazar al estudiante.")
+        elif "Descripcion" in data and len(data["Descripcion"]) > 200:
+            raise ValidationError("La descripción es muy larga.")
+        elif "Descripcion" in data and len(data["Descripcion"]) < 10:
+            raise ValidationError("La descripción es muy corta.")
+        
+        cursor.execute("UPDATE \"EstadoEstudiante\" SET \"Estado\"='revision', \"Activo\"=FALSE WHERE \"EstudianteId\"=%s;", (student_id,))
+        conn.commit()
+
+        html = render_template("reject-email.html", motivo=data["Motivo"], descripcion=data["Descripcion"], date=datetime.now().strftime("%A %d/%m/%Y"))
+
+        send_email(data["Email"], data["Motivo"], html, data["Descripcion"])
+
+        return Response(status=204)
+    except Exception as err:
+        conn.rollback()
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
     finally:
