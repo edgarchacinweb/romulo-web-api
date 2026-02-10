@@ -34,8 +34,18 @@ class Validations():
     
     @classmethod
     def is_ci(self, ci: str):
-        return bool(re.match(pattern=r"^\d{7,9}$", string=ci))
-    
+        # Primero limpiamos espacios
+        clean_ci = str(ci).strip()
+
+        # Validamos formato (6 a 10 dígitos)
+        is_format_valid = bool(re.match(pattern=r"^\d{6,10}$", string=clean_ci))
+
+        # Si el formato es válido, verificamos que no sea 0 (ej: 000000)
+        if is_format_valid:
+            return int(clean_ci) > 0
+
+        return False
+
     @classmethod
     def is_phone(self, phone: str):
         return bool(re.match(pattern=r"^(0412|0414|0416|0424|0426)-\d{7}$", string=phone))
@@ -138,5 +148,3 @@ class Validations():
             
         except Exception:
             return False
-
-    
