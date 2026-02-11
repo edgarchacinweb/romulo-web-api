@@ -75,13 +75,11 @@ CREATE TABLE "Horario" (
 "HorarioId" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
 "Dia" DIA NOT NULL,
 "DocenteId" UUID NULL,
-"Actividad" VARCHAR(20) NULL,
-"Activo" BOOLEAN DEFAULT TRUE,
 "BloqueHorarioId" UUID NOT NULL,
 "CursoId" UUID NOT NULL,
 "PeriodoEscolarId" UUID NOT NULL,
-"MateriaId" UUID NOT NULL,
 "Seccion" INTEGER NOT NULL,
+"Receso" BOOLEAN NOT NULL DEFAULT FALSE,
 "FechaCreacion" TIMESTAMP DEFAULT clock_timestamp()
 );
 
@@ -137,10 +135,16 @@ CREATE TABLE "Nota" (
 CREATE TABLE "Docente" (
 "DocenteId" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
 "DatosPersonaId" UUID NOT NULL,
-"MateriaId" UUID NOT NULL,
 "HorasAcademicas" SMALLINT NOT NULL DEFAULT 20,
 "Activo" BOOLEAN DEFAULT TRUE,
 "FechaCreacion" TIMESTAMP DEFAULT clock_timestamp()
+);
+
+CREATE TABLE "DocenteMateria" (
+"DocenteId" UUID NOT NULL,
+"MateriaId" UUID NOT NULL,
+"FechaCreacion" TIMESTAMP DEFAULT clock_timestamp(),
+PRIMARY KEY ("DocenteId", "MateriaId")
 );
 
 CREATE TABLE "PeriodoEscolar" (
@@ -207,13 +211,13 @@ ALTER TABLE "Horario" ADD FOREIGN KEY ("DocenteId") REFERENCES "Docente" ("Docen
 ALTER TABLE "Horario" ADD FOREIGN KEY ("BloqueHorarioId") REFERENCES "BloqueHorario" ("BloqueHorarioId");
 ALTER TABLE "Horario" ADD FOREIGN KEY ("CursoId") REFERENCES "Curso" ("CursoId");
 ALTER TABLE "Horario" ADD FOREIGN KEY ("PeriodoEscolarId") REFERENCES "PeriodoEscolar" ("PeriodoEscolarId");
-ALTER TABLE "Horario" ADD FOREIGN KEY ("MateriaId") REFERENCES "Materia" ("MateriaId");
 ALTER TABLE "Nota" ADD FOREIGN KEY ("MateriaId") REFERENCES "Materia" ("MateriaId");
 ALTER TABLE "Nota" ADD FOREIGN KEY ("EstudianteId") REFERENCES "Estudiante" ("EstudianteId");
 ALTER TABLE "Estudiante" ADD FOREIGN KEY ("DatosPersonaId") REFERENCES "DatosPersona" ("DatosPersonaId");
 ALTER TABLE "Estudiante" ADD FOREIGN KEY ("RepresentanteId") REFERENCES "DatosPersona" ("DatosPersonaId");
 ALTER TABLE "Docente" ADD FOREIGN KEY ("DatosPersonaId") REFERENCES "DatosPersona" ("DatosPersonaId");
-ALTER TABLE "Docente" ADD FOREIGN KEY ("MateriaId") REFERENCES "Materia" ("MateriaId");
+ALTER TABLE "DocenteMateria" ADD FOREIGN KEY ("DocenteId") REFERENCES "Docente" ("DocenteId");
+ALTER TABLE "DocenteMateria" ADD FOREIGN KEY ("MateriaId") REFERENCES "Materia" ("MateriaId");
 ALTER TABLE "Usuario" ADD FOREIGN KEY ("DatosPersona") REFERENCES "DatosPersona" ("DatosPersonaId") ON DELETE CASCADE;
 ALTER TABLE "Auditoria" ADD FOREIGN KEY ("UsuarioId") REFERENCES "Usuario" ("UsuarioId");
 ALTER TABLE "Curso" ADD CONSTRAINT CK_Curso_Grado CHECK ("Curso"."Grado" >= 1 AND "Curso"."Grado" <= 5);
@@ -234,6 +238,20 @@ VALUES
 ('Biología'),
 ('Química'),
 ('Física');
+
+INSERT INTO "BloqueHorario" ("HoraInicio", "HoraFin")
+VALUES
+('07:00', '07:40'),
+('07:40', '08:20'),
+('08:20', '08:25'),
+('08:25', '09:05'),
+('09:05', '09:45'),
+('09:45', '10:00'),
+('10:00', '10:40'),
+('10:40', '11:20'),
+('11:20', '11:25'),
+('11:25', '12:05'),
+('12:05', '12:45');
 
 -- Procedimientos almacenados
 CREATE PROCEDURE registrar_curso_estudiante(estudiante_id UUID, curso_id UUID) AS $$
