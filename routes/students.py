@@ -164,20 +164,56 @@ def create_parent_by_ci():
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
 
+# --- CORRECCIÓN IMPORTANTE: GET POR SQL DIRECTO ---
+# Esto permite buscar estudiantes incluso si están "Rechazados" (Activo=False)
 @student_bp.route("/students/get/<string:id>", methods=["GET"])
 def get(id: str = ""):
+    connection = Connection().get_connection()
+    cursor = connection.cursor()
     try:
         payload = Security.verify_token(request.headers)
         if not payload or not payload["role"] in (Rol.ADMIN.name, Rol.PARENT.name): raise Unauthorized()
+        
         if not Validations.is_uuid(id): raise InvalidId(f"ID inválido: {id}")
 
-        estudiante = rep.get(id)
-        if estudiante == None: raise EntityNotFound(f"No se encontró ningún estudiante con ese identificador")
+        # Consulta directa para obtener los datos necesarios para editar
+        # Ignoramos el campo "Activo" en el WHERE para encontrar a los rechazados
+        cursor.execute("""
+            SELECT dp."Nombre", dp."Apellido", dp."Sexo", dp."Cedula", dp."Direccion",
+                   e."FechaNacimiento", e."Parentesco",
+                   ce."CursoId"
+            FROM "Estudiante" AS e
+            INNER JOIN "DatosPersona" AS dp ON e."DatosPersonaId" = dp."DatosPersonaId"
+            LEFT JOIN "CursoEstudiante" AS ce ON e."EstudianteId" = ce."EstudianteId"
+            WHERE e."EstudianteId" = %s
+        """, (id,))
+        
+        row = cursor.fetchone()
+        if not row:
+            raise EntityNotFound("No se encontró ningún estudiante con ese identificador")
 
-        return jsonify(estudiante.to_dict()), 200
+        # Construimos el JSON manualmente para el frontend
+        student_data = {
+            "DatosPersona": {
+                "Nombre": row[0],
+                "Apellido": row[1],
+                "Sexo": row[2],
+                "Cedula": row[3],
+                "Direccion": row[4]
+            },
+            "FechaNacimiento": str(row[5]),
+            "Parentesco": row[6],
+            "Curso": {
+                "CursoId": row[7]
+            }
+        }
+
+        return jsonify(student_data), 200
     except Exception as err:
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
     
 @student_bp.route("/students/list", methods=["GET"])
 def list():
@@ -503,7 +539,7 @@ def reject_student(student_id: str):
         data = request.get_json()
         if "Email" not in data: raise ValidationError("Falta Email")
         
-        cursor.execute("UPDATE \"EstadoEstudiante\" SET \"Estado\"='revision' WHERE \"EstudianteId\"=%s;", (student_id,))
+        cursor.execute("UPDATE \"EstadoEstudiante\" SET \"Estado\"='rechazado' WHERE \"EstudianteId\"=%s;", (student_id,))
         cursor.execute("UPDATE \"Estudiante\" SET \"Activo\"=FALSE WHERE \"EstudianteId\"=%s;", (student_id,))
         
         conn.commit()
@@ -516,6 +552,98 @@ def reject_student(student_id: str):
         return Response(status=204)
     except Exception as err:
         conn.rollback()
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
+
+@student_bp.route("/students/correct_application/<string:student_id>", methods=["PUT"])
+def correct_application(student_id: str):
+    connection = Connection().get_connection()
+    cursor = connection.cursor()
+    
+    try:
+        payload = Security.verify_token(request.headers)
+        if not payload or payload["role"] not in [Rol.ADMIN.name, Rol.PARENT.name]:
+            raise Unauthorized()
+
+        if not Validations.is_uuid(student_id):
+            raise InvalidId(f"ID inválido: {student_id}")
+
+        data = request.form 
+        files = request.files
+
+        # 1. Actualizar Datos Personales
+        cursor.execute('SELECT "DatosPersonaId" FROM "Estudiante" WHERE "EstudianteId" = %s', (student_id,))
+        row = cursor.fetchone()
+        if not row: raise EntityNotFound("Estudiante no encontrado")
+        dp_id = row[0]
+
+        cursor.execute(
+            """UPDATE "DatosPersona" 
+               SET "Nombre"=%s, "Apellido"=%s, "Sexo"=%s, "Cedula"=%s, "Direccion"=%s
+               WHERE "DatosPersonaId"=%s;""",
+            (data["Nombre"], data["Apellido"], data["Genero"], data["Cedula"], data["Direccion"], dp_id)
+        )
+
+        # 2. Actualizar Datos Estudiante
+        cursor.execute(
+            """UPDATE "Estudiante" 
+               SET "FechaNacimiento"=%s, "Parentesco"=%s
+               WHERE "EstudianteId"=%s;""",
+            (data["FechaNacimiento"], data["Parentesco"], student_id)
+        )
+
+        # 3. Actualizar Curso
+        cursor.execute(
+            """UPDATE "CursoEstudiante" SET "CursoId"=%s WHERE "EstudianteId"=%s;""",
+            (data["IdCurso"], student_id)
+        )
+
+        # 4. Actualizar Estado y Reactivar (CORRECCIÓN AQUÍ)
+        cursor.execute(
+            """UPDATE "EstadoEstudiante" SET "Estado"='revision' WHERE "EstudianteId"=%s;""",
+            (student_id,)
+        )
+        
+        # ¡ESTA LÍNEA FALTABA! Volvemos a activar al estudiante para que el Admin lo vea
+        cursor.execute(
+            """UPDATE "Estudiante" SET "Activo"=TRUE WHERE "EstudianteId"=%s;""",
+            (student_id,)
+        )
+
+        # 5. Manejo de Archivos
+        
+        # Foto Carnet
+        if "FotoCarnet" in files and files["FotoCarnet"]:
+            foto = files["FotoCarnet"]
+            if get_format(foto.filename) == "webp":
+                foto_procesada = resize(foto)
+            else:
+                foto_procesada = resize(convert_to_webp(foto))
+            
+            path = os.path.join(app.config["UPLOAD_FOLDER"], f"carnet-{student_id}.webp")
+            if os.path.exists(path): os.remove(path)
+            foto_procesada.save(path)
+
+        # Documentos PDF
+        docs_map = {
+            "DocDni": f"dni-{student_id}.pdf",
+            "DocPartidaNacimiento": f"partida-nacimiento-{student_id}.pdf",
+            "DocNotasCertificadas": f"notas-certificadas-{student_id}.pdf"
+        }
+
+        for key, filename in docs_map.items():
+            if key in files and files[key]:
+                path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+                if os.path.exists(path): os.remove(path)
+                files[key].save(path)
+
+        connection.commit()
+        return jsonify({"message": "Solicitud corregida y enviada a revisión nuevamente."}), 200
+
+    except Exception as err:
+        connection.rollback()
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
     finally:
