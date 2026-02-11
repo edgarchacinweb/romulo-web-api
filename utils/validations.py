@@ -26,6 +26,10 @@ class Validations():
             return str(obj) == id
         except ValueError:
             return False
+
+    @classmethod
+    def is_teacher_hours(self, hours: str) -> bool:
+        return bool(re.match(r"\d[20-40]", hours))
         
     @classmethod
     def valid_format(self, filename:str):

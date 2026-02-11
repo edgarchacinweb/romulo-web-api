@@ -3,7 +3,6 @@ from .course import course_bp
 from .otp import otp_bp
 from .people_data import people_bp
 from .registration import reg_term_bp as registration_bp
-from .schedule_item import schedule_item_bp
 from .schedule import schedule_bp
 from .students import student_bp
 from .subject import subject_bp

@@ -4,14 +4,14 @@ from utils.handler import exception_handler
 from utils.exceptions import * 
 from utils.validations import Validations
 from utils.Security import Security
-from database.connection import get_connection
+from database.connection import Connection
 
 schedule_bp = Blueprint("schedule", __name__)
 logger = Logger()
 
 @schedule_bp.route("/schedule/filter", methods=["GET"])
 def filter():
-    conn = get_connection()
+    conn = Connection().get_connection()
     cursor = conn.cursor()
     try:
         payload = Security.verify_token(request.headers)
@@ -33,7 +33,26 @@ def filter():
         elif not Validations.is_uuid(data["PeriodoEscolarId"]):
             raise InvalidId("El identificador del período escolar es inválido")
 
-        return Response(status=200)
+        cursor.execute("""
+            SELECT * FROM "Horario" AS h
+            INNER JOIN "BloqueHorario" AS bh ON bh."BloqueHorarioId"=h."BloqueHorarioId"
+            WHERE h."CursoId"=%s AND h."Seccion"=%s AND h."PeriodoEscolarId"=%s
+            ORDER BY bh."HoraInicio" ASC;
+        
+        """, (data["CursoId"], data["Seccion"], data["PeriodoEscolarId"]) );
+
+        rows = cursor.fetchall()
+
+        return jsonify([{
+            "HorarioId": h[0],
+            "Dia": h[1],
+            "DocenteId": h[2],
+            "BloqueHorarioId": h[3],
+            "CursoId": h[4],
+            "PeriodoEscolarId": h[5],
+            "Seccion": h[6],
+            "Receso": h[7]
+        } for h in rows]), 200
     except Exception as err:
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]

@@ -11,6 +11,9 @@ from models.Usuario import Usuario, Rol
 from models.Auditoria import Auditoria
 from utils.handler import exception_handler
 from database.Auditoria import AuditoriaRep
+from database.connection import Connection
+from bcrypt import hashpw, gensalt
+from os import getenv
 
 rep = DocenteRep()
 logger = Logger()
@@ -20,37 +23,138 @@ teacher_bp = Blueprint("teacher", __name__)
 
 @teacher_bp.route("/teacher/create", methods=["POST"])
 def create_teacher():
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+
     try:
         payload = Security.verify_token(request.headers)
 
-        if not payload or payload["role"] != "ADMIN":
+        if not payload or payload["role"] != Rol.ADMIN.name:
             raise Unauthorized()
 
         data = request.get_json()
 
-        if not any(key in data for key in ("DatosPersonaId", "MateriaId")):
-            raise MissingEntityData("No se recibieron datos suficientes")
-        elif not Validations.is_uuid(data["DatosPersonaId"]):
-            raise InvalidId("El ID de usuario del docente es inválido")
-        elif not Validations.is_uuid(data["MateriaId"]):
-            raise InvalidId("El ID de la materia es inválido")
+        if "Nombre" not in data or not data["Nombre"]:
+            raise MissingEntityData("El nombre del docente es requerido")
+        elif not Validations.is_name(data["Nombre"]):
+            raise ValidationError("El nombre del docente tiene un formato incorrecto")
+        elif "Apellido" not in data or not data["Apellido"]:
+            raise MissingEntityData("El apellido del docente es requerido")
+        elif not Validations.is_lastname(data["Apellido"]):
+            raise ValidationError("El apellido del docente tiene un formato incorrecto")
+        elif "Sexo" not in data or not data["Sexo"]:
+            raise MissingEntityData("El sexo del docente es requerido")
+        elif not Validations.is_gender(data["Sexo"]):
+            raise ValidationError("El sexo del docente tiene un formato incorrecto")
+        elif "Cedula" not in data or not data["Cedula"]:
+            raise MissingEntityData("La cédula del docente es requerida")
+        elif not Validations.is_ci(data["Cedula"]):
+            raise ValidationError("La cédula del docente tiene un formato incorrecto")
+        elif "Telefono" not in data or not data["Telefono"]:
+            raise MissingEntityData("El teléfono del docente es requerido")
+        elif "Ocupacion" not in data or not data["Ocupacion"]:
+            raise MissingEntityData("La ocupación del docente es requerida")
+        elif "Direccion" not in data or not data["Direccion"]:
+            raise MissingEntityData("La dirección del docente es requerida")
+        elif not Validations.is_phone(data["Telefono"]):
+            raise ValidationError("El teléfono del docente tiene un formato incorrecto")
+        elif "Email" not in data or not data["Email"]:
+            raise MissingEntityData("El email del docente es requerido")
+        elif not Validations.is_email(data["Email"]):
+            raise ValidationError("El email del docente tiene un formato incorrecto")
+        elif "Horas" not in data or not data["Horas"]:
+            raise MissingEntityData("Las horas del docente son requeridas")
+        elif not Validations.is_teacher_hours(data["Horas"]):
+            raise ValidationError("Las horas del docente tienen un formato incorrecto")
+        elif "Materias" not in data or len(data["Materias"]) == 0:
+            raise MissingEntityData("Las materias del docente son requeridas")
+        else:
+            for materia in data["Materias"]:
+                if not Validations.is_uuid(materia):
+                    raise ValidationError("El ID de la materia es inválido")
 
-        docente = Docente({
-            "DatosPersona": DatosPersona({"id": data["DatosPersonaId"]}),
-            "Materia": Materia({"id": data["MateriaId"]})   
-        })
+        # Creando registro de datos del docente
+        cursor.execute(
+            """
+            INSERT INTO "DatosPersona" ("Nombre", "Apellido", "Sexo", "Cedula", "Telefono", "Ocupacion", "Direccion")
+            VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING "DatosPersonaId"
+            """,
+            (data["Nombre"], data["Apellido"], data["Sexo"], data["Cedula"], data["Telefono"], data["Ocupacion"], data["Direccion"])
+        )
 
-        id = rep.create(docente)
+        id_datos_persona = cursor.fetchone()[0]
+        
+        if not id_datos_persona:
+            raise EntityNotFound("Error al registrar los datos del docente")
 
-        auditory.create(Auditoria({
-            "Accion": "Registro",
-            "Descripcion": "Materia vinculada a docente"
-        }))
+        pwd = hashpw(f"V#{data['Cedula']}".encode("utf-8"), gensalt(rounds=int(getenv("pwd_rounds"))))
 
-        return jsonify({"id": id}), 201
+        # Creando registro de docente
+        cursor.execute(
+            """
+            INSERT INTO "Docente" ("HorasAcademicas", "DatosPersonaId")
+            VALUES (%s, %s) RETURNING "DocenteId"
+            """,
+            (data["Horas"], id_datos_persona)
+        )
+
+        id_docente = cursor.fetchone()[0]
+        
+        if not id_docente:
+            raise EntityNotFound("Error al registrar el docente")
+
+        # Vinculando materias al docente
+        for materia in data["Materias"]:
+            cursor.execute(
+                """
+                INSERT INTO "DocenteMateria" ("DocenteId", "MateriaId")
+                VALUES (%s, %s)
+                """,
+                (id_docente, materia)
+            )
+
+        if not cursor.rowcount:
+            raise EntityNotFound("Error al vincular las materias al docente")
+
+        # Creando registro de usuario
+        cursor.execute(
+            """
+            INSERT INTO "Usuario" ("Email", "Clave", "Rol", "DatosPersona")
+            VALUES (%s, %s, %s, %s) RETURNING "UsuarioId"
+            """,
+            (data["Email"], pwd, Rol.TEACHER.value, id_datos_persona)
+        )
+
+        id_usuario = cursor.fetchone()[0]
+
+        if not id_usuario:
+            raise EntityNotFound("Error al registrar el usuario del docente")
+
+        # Registrando auditoría
+        cursor.execute(
+            """
+            INSERT INTO "Auditoria" ("UsuarioId", "Descripcion", "Accion")
+            VALUES (%s, %s, %s) RETURNING "AuditoriaId"
+            """,
+            (id_usuario, f"Docente {data['Nombre']} {data['Apellido']} registrado exitosamente", "Registro")
+        )
+
+        id_auditoria = cursor.fetchone()[0]
+
+        if not id_auditoria:
+            raise EntityNotFound("Error al registrar la auditoría")
+
+        conn.commit()
+
+        return Response(
+            status=201
+        )
     except Exception as err:
+        conn.rollback()
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
 
 @teacher_bp.route("/teacher/get/<string:id>", methods=["GET"])
 def get_teacher(id: str = ""):
