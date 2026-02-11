@@ -6,8 +6,8 @@ from utils.validations import Validations
 from utils.logger import Logger
 from utils.Security import Security
 from utils.exceptions import *
-from utils.Security import Security
 from utils.handler import exception_handler
+from database.connection import Connection
 
 people_bp = Blueprint("people", __name__)
 logger = Logger()
@@ -122,25 +122,45 @@ def delete(id):
 @people_bp.route("/people/update/<string:id>", methods=["PATCH"])
 def update(id: str = ""):
     try:
+        # 1. Limpiamos el ID
+        clean_id = id.strip()
+        
         payload = Security.verify_token(request.headers)
 
         if not payload or payload["role"] != Rol.ADMIN.name:
             raise Unauthorized()
-        elif not Validations.is_uuid(id):
-            raise InvalidId(f"ID inválido: {payload['id']}")
+        
+        # 2. Validamos el ID. OJO: Si falla aquí, revisa que clean_id no sea "undefined"
+        elif not Validations.is_uuid(clean_id):
+            raise InvalidId(f"ID de representante inválido: {clean_id}")
 
         data_dict = request.get_json()
 
-        if not any(key in data_dict for key in ("Nombre", "Apellido", "Sexo", "Cedula", "Telefono")):
+        if not any(key in data_dict for key in ("Nombre", "Apellido", "Sexo", "Cedula", "Telefono", "Email")):
             raise MissingEntityData("No hay datos que actualizar")
 
+        # 3. Actualizar Persona
         personData = DatosPersona(data_dict)
-        personData.id = id
+        personData.id = clean_id
         affected = rep.update(personData)
 
-        if not affected:
-            raise EntityUpdateError("Ocurrió un error en la base de datos")
-        
+        # 4. Actualizar Email (CORREGIDO: Sin cerrar conexión manualmente)
+        if "Email" in data_dict:
+            if not Validations.is_email(data_dict["Email"]):
+                raise ValidationError("El formato del correo electrónico es inválido")
+            
+            # Abrimos cursor, ejecutamos y hacemos commit.
+            # NO cerramos 'conn' aquí para evitar matar la conexión del pool.
+            conn = Connection().get_connection()
+            cursor = conn.cursor()
+            cursor.execute('UPDATE "Usuario" SET "Email" = %s WHERE "DatosPersonaId" = %s', (data_dict["Email"], clean_id))
+            conn.commit()
+            cursor.close() 
+            # Eliminamos conn.close() para evitar el Error 500
+
+        if not affected and "Email" not in data_dict:
+            raise EntityUpdateError("Ocurrió un error en la base de datos o no hubo cambios")
+
         return Response(status=200)
     except Exception as err:
         ex = exception_handler(err)

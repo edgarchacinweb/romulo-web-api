@@ -22,8 +22,15 @@ class Validations():
     @classmethod
     def is_uuid(self, id: str):
         try:
-            obj = uuid.UUID(id, version=4)
-            return str(obj) == id
+            # 1. Limpiamos espacios al inicio y final
+            clean_id = str(id).strip()
+            
+            # 2. Intentamos crear el objeto UUID usando el ID limpio
+            # Esto fallará si el ID no es válido
+            uuid.UUID(clean_id, version=4)
+            
+            # 3. Si llega aquí, es válido. Devolvemos True.
+            return True
         except ValueError:
             return False
         
@@ -34,17 +41,14 @@ class Validations():
     
     @classmethod
     def is_ci(self, ci: str):
-        # Primero limpiamos espacios
+        # Limpiamos espacios
         clean_ci = str(ci).strip()
 
-        # Validamos formato (6 a 10 dígitos)
-        is_format_valid = bool(re.match(pattern=r"^\d{6,10}$", string=clean_ci))
-
-        # Si el formato es válido, verificamos que no sea 0 (ej: 000000)
-        if is_format_valid:
-            return int(clean_ci) > 0
-
-        return False
+        # REGLA: 
+        # ^[1-9]   -> El primer dígito debe ser del 1 al 9 (Nunca 0)
+        # \d{6,9}  -> Seguido de 6 a 9 dígitos más
+        # Total: De 7 a 10 dígitos (Mínimo 1.000.000)
+        return bool(re.match(pattern=r"^[1-9]\d{6,9}$", string=clean_ci))
 
     @classmethod
     def is_phone(self, phone: str):
