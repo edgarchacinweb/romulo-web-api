@@ -4,14 +4,14 @@ from utils.handler import exception_handler
 from utils.exceptions import * 
 from utils.validations import Validations
 from utils.Security import Security
-from database.connection import get_connection
+from database.connection import Connection
 
 schedule_bp = Blueprint("schedule", __name__)
 logger = Logger()
 
 @schedule_bp.route("/schedule/filter", methods=["GET"])
 def filter():
-    conn = get_connection()
+    conn = Connection().get_connection()
     cursor = conn.cursor()
     try:
         payload = Security.verify_token(request.headers)
