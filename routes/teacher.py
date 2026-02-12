@@ -271,6 +271,7 @@ def remove(id):
 
         cursor.execute(
             """
+            DELETE FROM "Horario" WHERE "DocenteId"=%s;
             DELETE FROM "DocenteMateria" WHERE "DocenteId"=%s;
             DELETE FROM "Docente" WHERE "DocenteId"=%s;
             DELETE FROM "DatosPersona" WHERE "DatosPersonaId"=%s;

@@ -232,7 +232,7 @@ class CursoRep(Repository):
                 "Estudiantes": c[1],
                 "CursoId": c[2],
                 "Grado": c[3],
-                "Capacidad": c[4]
+                "Capacidad": c[4],
             } for c in max_section]
         except Exception as err:
             self.db_connection.rollback()

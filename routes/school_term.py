@@ -9,6 +9,7 @@ from utils.exceptions import *
 from utils.Security import Security
 from utils.handler import exception_handler
 from database.Auditoria import Auditoria, AuditoriaRep
+from database.connection import Connection
 
 school_term_bp = Blueprint("periodo_escolar", __name__)
 logger = Logger()
@@ -89,20 +90,31 @@ def get(id: str = ""):
 
 @school_term_bp.route("/school_term/list", methods=["GET"])
 def list():
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
     try:
-        offset = None
-        limit = None
+        cursor.execute(
+            """
+            SELECT * FROM "PeriodoEscolar" ORDER BY "FechaInicio" DESC
+            """
+        )
 
-        if request.args.get("offset") != None:
-            offset = int(request.args.get("offset"))
-        if request.args.get("limit") != None:
-            limit = int(request.args.get("limit"))
+        terms = cursor.fetchall()
 
-        terms = rep.list(limit, offset)
-        return jsonify([t.to_dict() for t in terms]), 200
+        if not terms:
+            terms = []
+
+        return jsonify([{
+            "PeriodoEscolarId": t[0],
+            "FechaInicio": t[1],
+            "FechaFin": t[2]
+        } for t in terms]), 200
     except Exception as err:
+        conn.rollback()
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
 
 @school_term_bp.route("/school_term/update", methods=["PUT"])
 def update():
