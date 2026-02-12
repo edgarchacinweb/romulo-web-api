@@ -136,7 +136,7 @@ def create_teacher():
             INSERT INTO "Auditoria" ("UsuarioId", "Descripcion", "Accion")
             VALUES (%s, %s, %s) RETURNING "AuditoriaId"
             """,
-            (id_usuario, f"Docente {data['Nombre']} {data['Apellido']} registrado exitosamente", "Registro")
+            (payload["id"], f"Docente {data['Nombre']} {data['Apellido']} registrado exitosamente", "Registro")
         )
 
         id_auditoria = cursor.fetchone()[0]
@@ -146,9 +146,7 @@ def create_teacher():
 
         conn.commit()
 
-        return Response(
-            status=201
-        )
+        return jsonify({"DocenteId": id_docente}), 201
     except Exception as err:
         conn.rollback()
         ex = exception_handler(err)
@@ -199,6 +197,18 @@ def list():
 
         teachers = cursor.fetchall()
 
+        if not teachers or len(teachers) == 0:
+            return jsonify([]), 200
+
+        cursor.execute(
+            """
+            SELECT m."MateriaId", m."Nombre" FROM "DocenteMateria" AS d INNER JOIN "Materia" AS m ON d."MateriaId"=m."MateriaId" WHERE d."DocenteId"=%s;
+            """,
+            (teachers[0][0],)
+        )
+
+        subjects = cursor.fetchall()
+
         return jsonify([{
             "DocenteId": t[0],
             "HorasAcademicas": t[2],
@@ -215,8 +225,63 @@ def list():
             "Usuario": {
                 "UsuarioId": t[15],
                 "Email": t[16]
-            }
+            },
+            "Materias": [{"MateriaId": s[0], "Nombre": s[1]} for s in subjects]
         } for t in teachers]), 200
+    except Exception as err:
+        conn.rollback()
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
+
+@teacher_bp.route("/teacher/remove/<string:id>", methods=["DELETE"])
+def remove(id):
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+    try:
+        payload = Security.verify_token(request.headers)
+
+        if not payload or payload["role"] != Rol.ADMIN.name:
+            raise Unauthorized()
+
+        if not id or not Validations.is_uuid(id):
+            raise ValidationError("El ID del docente es inválido")
+
+        cursor.execute(
+            """
+            SELECT "DatosPersonaId" FROM "Docente" WHERE "DocenteId"=%s;
+            """,
+            (id,)
+        )
+
+        id_datos_persona = cursor.fetchone()[0]
+
+        if not id_datos_persona:
+            raise EntityNotFound("El docente no existe")
+
+        cursor.execute(
+            """
+            SELECT "Nombre", "Apellido" FROM "DatosPersona" WHERE "DatosPersonaId"=%s;
+            """,
+            (id_datos_persona,)
+        )
+
+        nombre, apellido = cursor.fetchone()
+
+        cursor.execute(
+            """
+            DELETE FROM "DocenteMateria" WHERE "DocenteId"=%s;
+            DELETE FROM "Docente" WHERE "DocenteId"=%s;
+            DELETE FROM "DatosPersona" WHERE "DatosPersonaId"=%s;
+            INSERT INTO "Auditoria" ("UsuarioId", "Descripcion", "Accion") VALUES (%s, %s, %s);
+            DELETE FROM "Usuario" WHERE "DatosPersona"=%s;
+            """,
+            (id, id, id_datos_persona, payload["id"], f"Docente {nombre} {apellido} eliminado exitosamente", "Eliminar", id_datos_persona)
+        )
+
+        conn.commit()
+        return Response(status=204)
     except Exception as err:
         conn.rollback()
         ex = exception_handler(err)
