@@ -33,15 +33,17 @@ def check_period():
     connection = Connection().get_connection()
     cursor = connection.cursor()
     try:
-        # Verifica si hoy existe un periodo activo dentro del rango de fechas
+        # Seleccionamos el PeriodoEscolarId asociado a la inscripción activa
         cursor.execute("""
-            SELECT 1 FROM "PeriodoInscripcion" 
+            SELECT "PeriodoEscolarId" FROM "PeriodoInscripcion" 
             WHERE "Activo" = TRUE 
             AND CURRENT_DATE BETWEEN "Inicio" AND "Fin" 
             LIMIT 1;
         """)
-        if cursor.fetchone():
-            return jsonify({"open": True}), 200
+        row = cursor.fetchone()
+        
+        if row:
+            return jsonify({"open": True, "periodoEscolarId": row[0]}), 200
         return jsonify({"open": False, "message": "Proceso de inscripción cerrado"}), 404
     except Exception as err:
         ex = exception_handler(err)
@@ -54,19 +56,13 @@ def create():
     connection = Connection().get_connection()
     cursor = connection.cursor()
     
-    full_path_carnet = None
-    full_path_dni = None
-    full_path_partida = None
-    full_path_notas = None
-
     try:
         payload = Security.verify_token(request.headers)
         if not payload or payload["role"] not in [Rol.ADMIN.name, Rol.PARENT.name]:
             raise Unauthorized()
 
-        # --- VALIDACIÓN DE SEGURIDAD: PERIODO ACTIVO ---
         cursor.execute("""
-            SELECT "PeriodoInscripcionId" FROM "PeriodoInscripcion" 
+            SELECT 1 FROM "PeriodoInscripcion" 
             WHERE "Activo" = TRUE AND CURRENT_DATE BETWEEN "Inicio" AND "Fin" LIMIT 1;
         """)
         if not cursor.fetchone():
@@ -82,7 +78,6 @@ def create():
             if field not in data:
                 raise MissingEntityData(f"Falta el campo requerido: {field}")
 
-        # Insertar Datos Persona
         cursor.execute(
             """INSERT INTO "DatosPersona" ("Nombre", "Apellido", "Sexo", "Cedula", "Direccion") 
                VALUES (%s,%s,%s,%s,%s) RETURNING "DatosPersonaId";""",
@@ -90,7 +85,6 @@ def create():
         )
         datos_persona_id = cursor.fetchone()[0]
 
-        # Insertar Estudiante
         cursor.execute(
             """INSERT INTO "Estudiante" ("FechaNacimiento", "Parentesco", "DatosPersonaId", "RepresentanteId") 
                VALUES (%s,%s,%s,%s) RETURNING "EstudianteId";""",
@@ -98,20 +92,15 @@ def create():
         )
         estudiante_id = cursor.fetchone()[0]
 
-        # Estado inicial
         cursor.execute("""INSERT INTO "EstadoEstudiante" ("EstudianteId", "Estado") VALUES (%s, %s)""", (estudiante_id, 'revision'))
-
-        # Asignar curso mediante Procedimiento Almacenado
         cursor.execute("CALL registrar_curso_estudiante(%s, %s)", (estudiante_id, data["IdCurso"]))
         
-        # Auditoria
         cursor.execute(
             """INSERT INTO "Auditoria" ("UsuarioId", "Descripcion", "Accion") 
                VALUES ((SELECT "UsuarioId" FROM "Usuario" WHERE "DatosPersona" = %s), %s, %s)""",
             (data["IdRepresentante"], "Se registro un nuevo estudiante", "Registro")
         )
 
-        # Procesar Archivos
         foto = files["FotoCarnet"]
         if get_format(foto.filename) != "webp":
             foto = convert_to_webp(foto)
@@ -247,27 +236,40 @@ def change_status(student_id: str):
     finally:
         cursor.close()
 
+# --- CORRECCIÓN CLAVE: Usamos ce."PeriodoEscolarId" (tabla intermedia) ---
 @student_bp.route("/students/by_parent/<string:parent_id>", methods=["GET"])
 def get_all_by_parent(parent_id: str):
     connection = Connection().get_connection()
     cursor = connection.cursor()
     try:
         cursor.execute("""
-            SELECT ce."EstudianteId", e."FechaNacimiento", c."CursoId", c."Grado", ce."Seccion",
-                   dp."Nombre", dp."Apellido", dp."Sexo", dp."Cedula", ee."Estado"
-            FROM "CursoEstudiante" AS ce 
+            SELECT DISTINCT ON (e."EstudianteId") 
+                   ce."EstudianteId", e."FechaNacimiento", c."CursoId", c."Grado", ce."Seccion",
+                   dp."Nombre", dp."Apellido", dp."Sexo", dp."Cedula", ee."Estado", ce."PeriodoEscolarId"
+            FROM "Estudiante" AS e 
+            INNER JOIN "CursoEstudiante" AS ce ON ce."EstudianteId"=e."EstudianteId" 
             INNER JOIN "Curso" AS c ON c."CursoId"=ce."CursoId" 
-            INNER JOIN "Estudiante" AS e ON ce."EstudianteId"=e."EstudianteId" 
             INNER JOIN "DatosPersona" AS dp ON e."DatosPersonaId"=dp."DatosPersonaId" 
             INNER JOIN "EstadoEstudiante" AS ee ON ee."EstudianteId"=e."EstudianteId" 
-            WHERE e."RepresentanteId"=%s;""", (parent_id,))
+            WHERE e."RepresentanteId"=%s
+            ORDER BY e."EstudianteId", c."Grado" DESC;""", (parent_id,))
+            
         students = cursor.fetchall()
+        
         return jsonify([{
             "EstudianteId": s[0], "FechaNacimiento": s[1],
-            "Curso": {"CursoId": s[2], "Grado": s[3], "Seccion": number_to_letter(s[4])},
+            "Curso": {
+                "CursoId": s[2], 
+                "Grado": s[3], 
+                "Seccion": number_to_letter(s[4]), 
+                "PeriodoEscolarId": s[10] # Correctamente mapeado desde ce
+            },
             "DatosPersona": {"Nombre": s[5], "Apellido": s[6], "Sexo": s[7], "Cedula": s[8]},
             "EstadoEstudiante": {"Estado": s[9]}
         } for s in students]), 200
+    except Exception as err:
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
     finally:
         cursor.close()
 
@@ -278,10 +280,7 @@ def filter_students():
     try:
         payload = Security.verify_token(request.headers)
         if not payload or payload["role"] != Rol.ADMIN.name: raise Unauthorized()
-        
         data = request.get_json()
-        
-        # --- CONSULTA CORREGIDA: Saca el Email de la tabla Usuario (u) ---
         query = """SELECT e."EstudianteId", ee."Estado", e."Activo", e."FechaNacimiento", e."Parentesco",
                           dp."Nombre", dp."Apellido", dp."Sexo", dp."Cedula", dp."Direccion",
                           r."Nombre", r."Apellido", u."Email", c."Grado", ce."Seccion", u."UsuarioId"
@@ -292,16 +291,13 @@ def filter_students():
                    INNER JOIN "CursoEstudiante" AS ce ON ce."EstudianteId"=e."EstudianteId"
                    INNER JOIN "Curso" AS c ON c."CursoId"=ce."CursoId"
                    INNER JOIN "Usuario" AS u ON u."DatosPersona"=r."DatosPersonaId" """
-        
         conditions = []
         params = []
         if data.get("Estado"):
             conditions.append("ee.\"Estado\" = %s")
             params.append(data["Estado"])
-        
         if conditions: query += " WHERE " + " AND ".join(conditions)
         query += " ORDER BY ee.\"FechaCreacion\" DESC;"
-        
         cursor.execute(query, params)
         students = cursor.fetchall()
         return jsonify([{
@@ -311,7 +307,52 @@ def filter_students():
             "Curso": {"Grado": s[13], "Seccion": s[14]}
         } for s in students]), 200
     except Exception as err:
-        connection.rollback() # Limpia la transacción para evitar InFailedSqlTransaction
+        connection.rollback()
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
+
+@student_bp.route("/students/reinscribe", methods=["POST"])
+def reinscribe_student():
+    connection = Connection().get_connection()
+    cursor = connection.cursor()
+    try:
+        payload = Security.verify_token(request.headers)
+        if not payload: raise Unauthorized()
+
+        # Validación con SELECT 1 (Segura)
+        cursor.execute("""
+            SELECT 1 FROM "PeriodoInscripcion" 
+            WHERE "Activo" = TRUE AND CURRENT_DATE BETWEEN "Inicio" AND "Fin" LIMIT 1;
+        """)
+        if not cursor.fetchone():
+            return jsonify({"message": "Proceso de reinscripción cerrado."}), 403
+
+        data = request.get_json()
+        student_id = data.get("EstudianteId")
+        new_curso_id = data.get("NuevoCursoId")
+
+        if not student_id or not new_curso_id:
+            raise MissingEntityData("Faltan datos para procesar la reinscripción")
+
+        cursor.execute("""
+            UPDATE "EstadoEstudiante" SET "Estado" = 'revision' 
+            WHERE "EstudianteId" = %s;
+        """, (student_id,))
+
+        cursor.execute("CALL registrar_curso_estudiante(%s, %s)", (student_id, new_curso_id))
+
+        cursor.execute(
+            """INSERT INTO "Auditoria" ("UsuarioId", "Descripcion", "Accion") 
+               VALUES (%s, %s, %s)""",
+            (payload["id"], "Se proceso una reinscripción automática", "Actualización")
+        )
+
+        connection.commit()
+        return jsonify({"message": "Reinscripción procesada exitosamente. Su solicitud está en revisión."}), 200
+    except Exception as err:
+        connection.rollback()
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
     finally:
