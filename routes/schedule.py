@@ -9,7 +9,7 @@ from database.connection import Connection
 schedule_bp = Blueprint("schedule", __name__)
 logger = Logger()
 
-@schedule_bp.route("/schedule/filter", methods=["GET"])
+@schedule_bp.route("/schedule/filter", methods=["POST"])
 def filter():
     conn = Connection().get_connection()
     cursor = conn.cursor()
@@ -59,4 +59,25 @@ def filter():
     finally:
         cursor.close()
 
+@schedule_bp.route("/schedule/blocks", methods=["GET"])
+def blocks():
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+    try:
+        payload = Security.verify_token(request.headers)
+        if payload is None:
+            raise Unauthorized()
 
+        cursor.execute("SELECT * FROM \"BloqueHorario\";")
+        rows = cursor.fetchall()
+
+        return jsonify([{
+            "BloqueHorarioId": bh[0],
+            "HoraInicio": bh[1],
+            "HoraFin": bh[2]
+        } for bh in rows]), 200
+    except Exception as err:
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
