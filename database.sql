@@ -120,6 +120,7 @@ CREATE TABLE "EstadoEstudiante" (
 "EstudianteId" UUID NOT NULL,
 "Estado" ESTADO_ESTUDIANTE DEFAULT 'revision',
 "FechaCreacion" TIMESTAMP DEFAULT clock_timestamp()
+"Activo" BOOLEAN DEFAULT TRUE
 );
 
 CREATE TABLE "Nota" (
@@ -237,7 +238,9 @@ VALUES
 ('Inglés'),
 ('Biología'),
 ('Química'),
-('Física');
+('Física')
+('Economía'),
+('Arte y Patrimonio');
 
 INSERT INTO "BloqueHorario" ("HoraInicio", "HoraFin")
 VALUES

@@ -10,6 +10,7 @@ from utils.logger import Logger
 from utils.Security import Security
 from utils.handler import exception_handler
 from database.Auditoria import AuditoriaRep
+from database.connection import Connection
 
 rep = MateriaRep()
 logger = Logger()
@@ -67,23 +68,21 @@ def get_subject(id: str = ""):
     
 @subject_bp.route("/subject/list", methods=["GET"])
 def list_subjects():
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
     try:
         payload = Security.verify_token(request.headers)
 
         if not payload or payload["role"] != Rol.ADMIN.name:
             raise Unauthorized()
 
-        limit = None
-        offset = None
+        cursor.execute("SELECT * FROM \"Materia\";")
+        rows = cursor.fetchall()
 
-        if request.args.get("limit") != None:
-            limit = int(request.args.get("limit"))
-        if request.args.get("offset") != None:
-            offset = int(request.args.get("offset"))
-
-        subjects = rep.list(limit, offset) or list()
-
-        return jsonify([s.to_dict() for s in subjects]), 200
+        return jsonify([{
+            "MateriaId": s[0],
+            "Nombre": s[1]
+        } for s in rows]), 200
     except Exception as err:
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]

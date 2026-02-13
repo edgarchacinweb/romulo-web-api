@@ -412,7 +412,19 @@ def reject_student(student_id: str):
         elif "Descripcion" in data and len(data["Descripcion"]) < 10:
             raise ValidationError("La descripción es muy corta.")
         
-        cursor.execute("UPDATE \"EstadoEstudiante\" SET \"Estado\"='revision', \"Activo\"=FALSE WHERE \"EstudianteId\"=%s;", (student_id,))
+        # cursor.execute("UPDATE \"EstadoEstudiante\" SET \"Estado\"='revision', \"Activo\"=FALSE WHERE \"EstudianteId\"=%s;", (student_id,))
+        cursor.execute("""SELECT "DatosPersonaId" FROM "Estudiante" WHERE "EstudianteId"=%s;""", (student_id,))
+        persona_id = cursor.fetchone()[0]
+
+        cursor.execute(
+            """
+            DELETE FROM "EstadoEstudiante" WHERE "EstudianteId"=%s;
+            DELETE FROM "CursoEstudiante" WHERE "EstudianteId"=%s;
+            DELETE FROM "Estudiante" WHERE "EstudianteId"=%s;
+            DELETE FROM "DatosPersona" WHERE "DatosPersonaId"=%s;
+            """,
+            (student_id, student_id, student_id, persona_id)
+        )
         conn.commit()
 
         html = render_template("reject-email.html", motivo=data["Motivo"], descripcion=data["Descripcion"], date=datetime.now().strftime("%A %d/%m/%Y"))
