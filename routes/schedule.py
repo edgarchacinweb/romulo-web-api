@@ -47,11 +47,12 @@ def filter():
             "HorarioId": h[0],
             "Dia": h[1],
             "DocenteId": h[2],
-            "BloqueHorarioId": h[3],
-            "CursoId": h[4],
-            "PeriodoEscolarId": h[5],
-            "Seccion": h[6],
-            "Receso": h[7]
+            "MateriaId": h[3],
+            "BloqueHorarioId": h[4],
+            "CursoId": h[5],
+            "PeriodoEscolarId": h[6],
+            "Seccion": h[7],
+            "Receso": h[8]
         } for h in rows]), 200
     except Exception as err:
         ex = exception_handler(err)
