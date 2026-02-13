@@ -72,10 +72,10 @@ def blocks():
         rows = cursor.fetchall()
 
         return jsonify([{
-            "BloqueHorarioId": bh[0],
-            "HoraInicio": bh[1],
-            "HoraFin": bh[2]
-        } for bh in rows]), 200
+    "BloqueHorarioId": bh[0],
+    "HoraInicio": bh[1].strftime("%H:%M") if bh[1] else None,
+    "HoraFin": bh[2].strftime("%H:%M") if bh[2] else None
+} for bh in rows]), 200
     except Exception as err:
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]

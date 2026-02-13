@@ -75,6 +75,7 @@ CREATE TABLE "Horario" (
 "HorarioId" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
 "Dia" DIA NOT NULL,
 "DocenteId" UUID NULL,
+"MateriaId" UUID NULL,
 "BloqueHorarioId" UUID NOT NULL,
 "CursoId" UUID NOT NULL,
 "PeriodoEscolarId" UUID NOT NULL,
@@ -119,7 +120,7 @@ CREATE TABLE "EstadoEstudiante" (
 "EstadoEstudianteId" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
 "EstudianteId" UUID NOT NULL,
 "Estado" ESTADO_ESTUDIANTE DEFAULT 'revision',
-"FechaCreacion" TIMESTAMP DEFAULT clock_timestamp()
+"FechaCreacion" TIMESTAMP DEFAULT clock_timestamp(),
 "Activo" BOOLEAN DEFAULT TRUE
 );
 
@@ -212,6 +213,7 @@ ALTER TABLE "Horario" ADD FOREIGN KEY ("DocenteId") REFERENCES "Docente" ("Docen
 ALTER TABLE "Horario" ADD FOREIGN KEY ("BloqueHorarioId") REFERENCES "BloqueHorario" ("BloqueHorarioId");
 ALTER TABLE "Horario" ADD FOREIGN KEY ("CursoId") REFERENCES "Curso" ("CursoId");
 ALTER TABLE "Horario" ADD FOREIGN KEY ("PeriodoEscolarId") REFERENCES "PeriodoEscolar" ("PeriodoEscolarId");
+ALTER TABLE "Horario" ADD FOREIGN KEY ("MateriaId") REFERENCES "Materia" ("MateriaId");
 ALTER TABLE "Nota" ADD FOREIGN KEY ("MateriaId") REFERENCES "Materia" ("MateriaId");
 ALTER TABLE "Nota" ADD FOREIGN KEY ("EstudianteId") REFERENCES "Estudiante" ("EstudianteId");
 ALTER TABLE "Estudiante" ADD FOREIGN KEY ("DatosPersonaId") REFERENCES "DatosPersona" ("DatosPersonaId");
@@ -238,7 +240,7 @@ VALUES
 ('Inglés'),
 ('Biología'),
 ('Química'),
-('Física')
+('Física'),
 ('Economía'),
 ('Arte y Patrimonio');
 
