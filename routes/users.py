@@ -66,8 +66,6 @@ def register():
         if not "Clave" in data or not data["Clave"]:
             password = Security.generate_password()
             logger.debug("Clave generada")
-            # send_email(data["Email"], "Contraseña temporal", "temporal-password", password)
-            # logger.debug("correo enviado")
         else:
             password = data["Clave"]
 
@@ -139,7 +137,7 @@ def get_user():
             raise Unauthorized()
 
         if not Validations.is_uuid(payload["id"]):
-            raise InvalidId(F"ID inválido: {id}")
+            raise InvalidId(F"ID inválido: {payload['id']}")
         
         user = rep.get(payload["id"])
         return jsonify(user.to_dict()), 200
@@ -157,7 +155,7 @@ def get(ci: str):
             raise Unauthorized()
 
         if not Validations.is_uuid(payload["id"]):
-            raise InvalidId(F"ID inválido: {id}")
+            raise InvalidId(F"ID inválido: {payload['id']}")
         
         user = None
         if not ci:
@@ -194,7 +192,7 @@ def token(id: str):
         return jsonify(ex[0]), ex[1]
 
 @user_bp.route("/user/list", methods=["GET"])
-def list():
+def list_users():
     try:
         payload = Security.verify_token(request.headers)
 
@@ -214,7 +212,7 @@ def list():
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
 
-@user_bp.route("/user/get/rol/<int:ci>", methods=["DELETE"])
+@user_bp.route("/user/get/rol/<int:ci>", methods=["GET"])
 def get_rol(ci: int):
     try:
         payload = Security.verify_token(request.headers)
@@ -309,12 +307,15 @@ def modify_password():
     finally:
         cursor.close()
 
+# --- FUNCIÓN DEFINITIVA Y ROBUSTA ---
 @user_bp.route("/user/parent/update", methods=["PATCH"])
 def update_parent():
     conn = Connection().get_connection()
     cursor = conn.cursor()
     have_dni = False
     have_carnet = False
+    payload = None # Evita el error 500 en el except
+
     try:
         payload = Security.verify_token(request.headers)
 
@@ -328,88 +329,107 @@ def update_parent():
 
         data_to_update = {}
 
-        if not any(key in data for key in ("Telefono", "Ocupacion", "Clave")):
-            raise MissingEntityData("No hay datos que actualizar")
+        # 1. Recuperación inteligente de datos (Busca "Telefono" O "telefono")
+        phone = data.get("Telefono") or data.get("telefono")
+        ocupacion = data.get("Ocupacion") or data.get("ocupacion")
+        direccion = data.get("Direccion") or data.get("direccion")
+        clave = data.get("Clave") or data.get("clave")
 
-        if "Telefono" in data and len(data["Telefono"]) > 0 and not Validations.is_phone(data["Telefono"]):
-            raise ValidationError("El teléfono no es válido")
-        if "Ocupacion" in data and len(data["Ocupacion"]) > 0 and not Validations.is_occupation(data["Ocupacion"]):
-            raise ValidationError("La ocupación no es válida")
-        if "Clave" in data:
-            if len(data["Clave"]) > 0 and not Validations.is_password(data["Clave"]):
-                raise ValidationError("La contraseña no es válida")
-            elif "RClave" not in data:
-                raise ValidationError("Debes enviar la contraseña de confirmación")
-            elif data["Clave"] != data["RClave"]:
-                raise ValidationError("Las contraseñas no coinciden")
+        # 2. Validaciones y asignación
+        if phone and len(phone) > 0:
+            if not Validations.is_phone(phone):
+                raise ValidationError("El teléfono no es válido")
+            data_to_update["Telefono"] = phone
 
-            # Obtener la contraseña actual
+        if ocupacion and len(ocupacion) > 0:
+            data_to_update["Ocupacion"] = ocupacion
+
+        if direccion and len(direccion) > 0:
+            data_to_update["Direccion"] = direccion
+
+        # 3. Lógica de Contraseña
+        if clave and len(clave) > 0:
+            if not Validations.is_password(clave):
+                raise ValidationError("La contraseña nueva no cumple con el formato requerido")
+            
+            rclave = data.get("RClave") or data.get("rclave")
+            if not rclave:
+                raise ValidationError("Debes confirmar la nueva contraseña")
+            elif clave != rclave:
+                raise ValidationError("Las contraseñas nuevas no coinciden")
+
             cursor.execute("SELECT \"Clave\" FROM \"Usuario\" WHERE \"UsuarioId\" = %s", (payload["id"],))
             result = cursor.fetchone()
             
             if not result:
                 raise EntityNotFound("No se encontró el usuario")
             
-            if not bcrypt.check_password_hash(result[0], data["VClave"]):
-                raise ValidationError("La contraseña actual no es válida")
+            vclave = data.get("VClave") or data.get("vclave")
+            if not vclave:
+                 raise ValidationError("Debes ingresar tu contraseña actual para realizar el cambio")
 
-            new_password = bcrypt.generate_password_hash(data["Clave"], int(os.getenv("pwd_rounds"))).decode("utf8")
+            if not bcrypt.check_password_hash(result[0], vclave):
+                raise ValidationError("La contraseña actual es incorrecta")
+
+            new_password = bcrypt.generate_password_hash(clave, int(os.getenv("pwd_rounds"))).decode("utf8")
             cursor.execute("UPDATE \"Usuario\" SET \"Clave\" = %s WHERE \"UsuarioId\" = %s", (new_password, payload["id"]))
 
-        if "Telefono" in data and len(data["Telefono"]) > 0:
-            data_to_update["Telefono"] = data["Telefono"]
-        if "Ocupacion" in data and len(data["Ocupacion"]) > 0:
-            data_to_update["Ocupacion"] = data["Ocupacion"]
-        if "Direccion" in data and len(data["Direccion"]) > 0:
-            data_to_update["Direccion"] = data["Direccion"]
-
-        cursor.execute("SELECT \"DatosPersona\" FROM \"Usuario\" WHERE \"UsuarioId\" = %s", (payload["id"],))
-        datos_persona_id = cursor.fetchone()
-
-        cursor.execute("UPDATE \"DatosPersona\" SET " + ", ".join([f"\"{key}\" = %s" for key in data_to_update]) + " WHERE \"DatosPersonaId\" = %s", (*data_to_update.values(), datos_persona_id))
-
-        # Obtener documento PDF del DNI y foto de perfil
-        if "DNI" in files:
-            have_dni = True
-            file = files["DNI"]
-            if file.filename == "":
-                raise ValidationError("Debes enviar el documento PDF del DNI")
-            elif not Validations.is_pdf(file):
-                raise ValidationError("El documento debe ser un PDF")
+        # 4. Ejecución del UPDATE si hay datos
+        if data_to_update:
+            cursor.execute("SELECT \"DatosPersona\" FROM \"Usuario\" WHERE \"UsuarioId\" = %s", (payload["id"],))
+            result_dp = cursor.fetchone()
             
-            # Guardar el documento PDF del DNI
-            file.save(os.path.join(app.config['UPLOAD_FOLDER'], f"dni-{payload['id']}.pdf"))
+            if result_dp:
+                datos_persona_id = result_dp[0] 
+
+                # Construcción dinámica del SQL
+                set_clause = ", ".join([f"\"{key}\" = %s" for key in data_to_update.keys()])
+                values = list(data_to_update.values()) # Usamos la función nativa list()
+                values.append(datos_persona_id) 
+
+                query = f"UPDATE \"DatosPersona\" SET {set_clause} WHERE \"DatosPersonaId\" = %s"
+                cursor.execute(query, tuple(values))
+        
+        # 5. Si no hay datos texto pero hay archivos, también es válido.
+        if not data_to_update and not files and not clave:
+             raise MissingEntityData("No hay datos que actualizar")
+
+        # 6. Manejo de Archivos
+        if "DNI" in files:
+            file = files["DNI"]
+            if file.filename != "":
+                if not Validations.is_pdf(file):
+                    raise ValidationError("El documento DNI debe ser un PDF")
+                have_dni = True
+                file.save(os.path.join(app.config['UPLOAD_FOLDER'], f"dni-{payload['id']}.pdf"))
 
         if "Foto" in files:
-            have_carnet = True
             file = files["Foto"]
             allowed_extensions = ["png", "jpg", "jpeg", "webp"]
             img_extension = get_format(file.filename)
-            if file.filename == "":
-                raise ValidationError("Debes enviar la foto de perfil")
-            elif img_extension not in allowed_extensions:
-                raise ValidationError("La foto debe ser una imagen válida")
-            
-            # Convertir foto carnet a WEBP y redimensionarla
-            img_converted = convert_to_webp(file)
-            img = resize(img_converted, 500)
-
-            # Guardar la foto de perfil
-            img.save(os.path.join(app.config['UPLOAD_FOLDER'], f"carnet-{payload['id']}.webp"))
+            if file.filename != "":
+                if img_extension not in allowed_extensions:
+                    raise ValidationError("La foto debe ser una imagen válida")
+                have_carnet = True
+                img_converted = convert_to_webp(file)
+                img = resize(img_converted, 500)
+                img.save(os.path.join(app.config['UPLOAD_FOLDER'], f"carnet-{payload['id']}.webp"))
 
         conn.commit()
         return Response(status=200)
+
     except Exception as err:
         conn.rollback()
 
-        # Eliminar archivos subidos al servidor
-        dni_path = Path(os.path.join(app.config['UPLOAD_FOLDER'], f"dni-{payload['id']}.pdf"))
-        carnet_path = Path(os.path.join(app.config['UPLOAD_FOLDER'], f"carnet-{payload['id']}.webp"))
+        # Limpieza segura de archivos
+        if payload and 'id' in payload:
+            dni_path = Path(os.path.join(app.config['UPLOAD_FOLDER'], f"dni-{payload['id']}.pdf"))
+            carnet_path = Path(os.path.join(app.config['UPLOAD_FOLDER'], f"carnet-{payload['id']}.webp"))
 
-        if have_dni and dni_path.exists():
-            dni_path.unlink()
-        if have_carnet and carnet_path.exists():
-            carnet_path.unlink()
+            if have_dni and dni_path.exists():
+                dni_path.unlink()
+            if have_carnet and carnet_path.exists():
+                carnet_path.unlink()
 
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]

@@ -10,6 +10,7 @@ from utils.handler import exception_handler
 from utils.validations import Validations
 from utils.logger import Logger
 from utils.Security import Security
+from database.connection import Connection  # <--- CORRECCIÓN 1: Importación añadida
 
 rep = CursoRep()
 logger = Logger()
@@ -295,3 +296,31 @@ def get_max_sections(period_term_id:str = ""):
     except Exception as err:
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
+    
+# --- CORRECCIÓN 2: Ruta segura para reinscripción ---
+# --- RUTA CORREGIDA PARA REINSCRIPCIÓN (Sin columna Seccion) ---
+@course_bp.route("/course/get_by_grade/<int:grado>", methods=["GET"])
+def get_by_grade(grado):
+    connection = Connection().get_connection()
+    cursor = connection.cursor()
+    try:
+        # Añadimos seguridad básica
+        payload = Security.verify_token(request.headers)
+        if not payload: raise Unauthorized()
+
+        # CAMBIO IMPORTANTE: Quitamos 'AND "Seccion" = 1'
+        # Buscamos el primer curso disponible para ese grado.
+        cursor.execute('SELECT "CursoId" FROM "Curso" WHERE "Grado" = %s LIMIT 1;', (grado,))
+        row = cursor.fetchone()
+        
+        if row:
+            return jsonify({"CursoId": row[0]}), 200
+        else:
+            return jsonify({"message": f"No se encontró un curso registrado para {grado}° Año"}), 404
+            
+    except Exception as err:
+        connection.rollback() # Vital para evitar bloqueos
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()

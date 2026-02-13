@@ -10,6 +10,7 @@ from utils.Security import Security
 from datetime import datetime
 from utils.handler import exception_handler
 from database.Auditoria import Auditoria, AuditoriaRep
+from database.connection import Connection  # <--- Importación necesaria
 
 rep = PeriodoInscripcionRep()
 escolar_rep = PeriodoEscolarRep()
@@ -141,15 +142,59 @@ def update():
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
 
-@reg_term_bp.route("/registration/count", methods=["GET"])
-def registrationCount():
+# --- Rutas de Conteo para el Dashboard ---
+
+@reg_term_bp.route("/registration/count/students", methods=["GET"])
+def countTotalStudents():
+    connection = Connection().get_connection()
+    cursor = connection.cursor()
     try:
-        payload = Security.verify_token(request.headers);
-    
+        payload = Security.verify_token(request.headers)
         if not payload or payload["role"] != Rol.ADMIN.name:
             raise Unauthorized()
         
-        return jsonify({"count": 0}), 200
+        cursor.execute('SELECT COUNT(*) FROM "Estudiante";')
+        total = cursor.fetchone()[0]
+        return jsonify({"count": total}), 200
     except Exception as err:
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
+
+@reg_term_bp.route("/registration/count/teachers", methods=["GET"])
+def countTotalTeachers():
+    connection = Connection().get_connection()
+    cursor = connection.cursor()
+    try:
+        payload = Security.verify_token(request.headers)
+        if not payload or payload["role"] != Rol.ADMIN.name:
+            raise Unauthorized()
+        
+        cursor.execute('SELECT COUNT(*) FROM "Usuario" WHERE "Rol" = \'docente\';')
+        total = cursor.fetchone()[0]
+        return jsonify({"count": total}), 200
+    except Exception as err:
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
+
+@reg_term_bp.route("/registration/count", methods=["GET"])
+def registrationCount():
+    connection = Connection().get_connection()
+    cursor = connection.cursor()
+    try:
+        payload = Security.verify_token(request.headers)
+        if not payload or payload["role"] != Rol.ADMIN.name:
+            raise Unauthorized()
+        
+        cursor.execute('SELECT COUNT(*) FROM "EstadoEstudiante" WHERE "Estado" = \'revision\';')
+        total = cursor.fetchone()[0]
+        
+        return jsonify({"count": total}), 200
+    except Exception as err:
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()

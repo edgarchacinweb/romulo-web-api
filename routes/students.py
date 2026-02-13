@@ -1,459 +1,299 @@
-from flask import Blueprint, jsonify, request, Response, render_template
-from werkzeug.utils import secure_filename
+from flask import Blueprint, jsonify, request, Response
 from database.connection import Connection
-from database.Estudiante import EstudianteRep
-from database.DatosPersona import DatosPersonaRep
-from database.Usuario import Usuario, UsuarioRep
-from database.Auditoria import Auditoria, AuditoriaRep
-from database.Curso import CursoRep, Curso
-from database.Clase import ClaseRep, Clase
-from models.Estudiante import Estudiante
-from utils.exceptions import *
-from utils.validations import Validations
-from utils.logger import Logger
 from utils.Security import Security
-from utils.image import resize, get_format, convert_to_webp
+from utils.image import resize, convert_to_webp
 from models.Usuario import Rol
-from models.DatosPersona import DatosPersona
-from models.Curso import Curso
 from utils.handler import exception_handler
-from datetime import datetime
-from utils.config import app
 from utils.helpers import number_to_letter
-from utils.email import send_email
+from utils.config import app
 import os
-
-rep = EstudianteRep()
-logger = Logger()
 
 student_bp = Blueprint("student", __name__)
 
-@student_bp.route("/students/create", methods=["POST"])
-def create():
-    connection = Connection().get_connection()
-    cursor = connection.cursor()
-    
-    # Inicializamos las rutas de archivos a None para evitar errores en el 'except'
-    # si la ejecución falla antes de definirlos.
-    full_path_carnet = None
-    full_path_dni = None
-    full_path_partida = None
-    full_path_notas = None
+def get_db():
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+    return conn, cursor
 
+# --- 1. VERIFICAR PERIODO ---
+@student_bp.route("/students/check_period", methods=["GET"])
+def check_period():
+    conn, cursor = get_db()
     try:
-        # 1. Autenticación
-        payload = Security.verify_token(request.headers)
-        if not payload or payload["role"] not in [Rol.ADMIN.name, Rol.PARENT.name]:
-            raise Unauthorized()
-
-        # 2. Extracción de Datos (CORRECCIÓN A: Usar request.form para multipart)
-        # request.form se comporta como un diccionario para los campos de texto
-        data = request.form 
-        files = request.files
-
-        # 3. Validaciones (Simplificadas para legibilidad)
-        required_fields = ["Nombre", "Apellido", "Genero", "Cedula", "FechaNacimiento", 
-                           "Parentesco", "Direccion", "IdRepresentante", "IdCurso"]
-        
-        allowed_parentesco = ['Madre', 'Padre', 'Abuelo/a', 'Tío/a', 'Hermano/a', 'Padrastro', 'Madrastra', 'Tutor Legal', 'Otro']
-
-        for field in required_fields:
-            if field not in data:
-                raise MissingEntityData(f"Falta el campo requerido: {field}")
-
-        if data["Parentesco"] not in allowed_parentesco:
-            raise ValidationError(f"\"{data['Parentesco']}\" no es un parentesco válido")
-
-        # Validar estudiante duplicado
-        cursor.execute(
-            """SELECT e."EstudianteId" FROM "Estudiante" AS e
-                INNER JOIN "DatosPersona" AS dp ON e."DatosPersonaId"=dp."DatosPersonaId"
-                WHERE dp."Nombre"=%s AND dp."Apellido"=%s AND dp."Sexo"=%s AND e."RepresentanteId"=%s AND e."FechaNacimiento"=%s AND e."Parentesco"=%s;""",
-            (data["Nombre"], data["Apellido"], data["Genero"], data["IdRepresentante"], data["FechaNacimiento"], data["Parentesco"])
-        )
+        cursor.execute('SELECT "PeriodoEscolarId" FROM "PeriodoInscripcion" WHERE "Activo" = TRUE AND CURRENT_DATE BETWEEN "Inicio" AND "Fin" LIMIT 1;')
         row = cursor.fetchone()
         if row:
-            raise ValidationError("El estudiante ya existe")
+            return jsonify({"open": True, "periodoEscolarId": row[0]}), 200
+        return jsonify({"open": False, "message": "Inscripción cerrada"}), 404
+    except Exception as err:
+        conn.rollback()
+        return jsonify({"message": str(err)}), 500
+    finally:
+        cursor.close()
 
-        # Validación de existencia de archivos
-        required_files = ["FotoCarnet", "DocPartidaNacimiento", "DocNotasCertificadas"]
-        for file_key in required_files:
-            if file_key not in files:
-                raise MissingEntityData(f"Falta el archivo: {file_key}")
+# --- 2. CREAR ESTUDIANTE ---
+@student_bp.route("/students/create", methods=["POST"])
+def create():
+    conn, cursor = get_db()
+    try:
+        if not Security.verify_token(request.headers): 
+            return jsonify({"message": "No autorizado"}), 401
 
-        # 4. Inserciones en Base de Datos (SIN COMMIT AÚN)
-        # Mantenemos la transacción abierta para obtener los IDs
+        data, files = request.form, request.files
+
+        cursor.execute("""INSERT INTO "DatosPersona" ("Nombre", "Apellido", "Sexo", "Cedula", "Direccion") 
+                           VALUES (%s,%s,%s,%s,%s) RETURNING "DatosPersonaId";""",
+                        (data["Nombre"], data["Apellido"], data["Genero"], data["Cedula"], data["Direccion"]))
+        dp_id = cursor.fetchone()[0]
+
+        cursor.execute("""INSERT INTO "Estudiante" ("FechaNacimiento", "Parentesco", "DatosPersonaId", "RepresentanteId") 
+                           VALUES (%s,%s,%s,%s) RETURNING "EstudianteId";""",
+                        (data["FechaNacimiento"], data["Parentesco"], dp_id, data["IdRepresentante"]))
+        est_id = cursor.fetchone()[0]
+
+        cursor.execute('INSERT INTO "EstadoEstudiante" ("EstudianteId", "Estado") VALUES (%s, \'revision\')', (est_id,))
         
-        cursor.execute(
-            """INSERT INTO "DatosPersona" ("Nombre", "Apellido", "Sexo", "Cedula", "Direccion") 
-               VALUES (%s,%s,%s,%s,%s) RETURNING "DatosPersonaId";""",
-            (data["Nombre"], data["Apellido"], data["Genero"], data["Cedula"], data["Direccion"])
-        )
+        val_curso = str(data["IdCurso"]).strip()
+        cursor.execute('CALL registrar_curso_estudiante(%s, %s)', (est_id, val_curso))
+
+        if "FotoCarnet" in files:
+            path = os.path.join(app.config["UPLOAD_FOLDER"], f"carnet-{est_id}.webp")
+            resize(convert_to_webp(files["FotoCarnet"])).save(path)
+            
+        docs_map = {"DocDni": "dni", "DocPartidaNacimiento": "partida", "DocNotasCertificadas": "notas"}
+        for key, prefix in docs_map.items():
+            if key in files:
+                path = os.path.join(app.config["UPLOAD_FOLDER"], f"{prefix}-{est_id}.pdf")
+                files[key].save(path)
+
+        conn.commit()
+        return jsonify({"message": "Estudiante registrado con éxito"}), 201
+    except Exception as err:
+        conn.rollback()
+        print(f"Error create: {err}")
+        return jsonify({"message": str(err)}), 500
+    finally:
+        cursor.close()
+
+# --- 3. OBTENER ESTUDIANTE (Edición) ---
+@student_bp.route("/students/get/<string:id>", methods=["GET"])
+def get_student(id):
+    conn, cursor = get_db()
+    try:
+        query = """
+            SELECT dp."Nombre", dp."Apellido", dp."Sexo", dp."Cedula", dp."Direccion", 
+                   e."FechaNacimiento", e."Parentesco", ce."CursoId"
+            FROM "Estudiante" e
+            JOIN "DatosPersona" dp ON e."DatosPersonaId" = dp."DatosPersonaId"
+            LEFT JOIN "CursoEstudiante" ce ON e."EstudianteId" = ce."EstudianteId"
+            WHERE e."EstudianteId" = %s
+        """
+        cursor.execute(query, (id,))
         row = cursor.fetchone()
-        if not row: raise EntityExceptions.EntityNotFound("Error al crear DatosPersona")
-        datos_persona_id = row[0]
+        if not row: return jsonify({"message": "No encontrado"}), 404
 
-        cursor.execute(
-            """INSERT INTO "Estudiante" ("FechaNacimiento", "Parentesco", "DatosPersonaId", "RepresentanteId") 
-               VALUES (%s,%s,%s,%s) RETURNING "EstudianteId";""",
-            (data["FechaNacimiento"], data["Parentesco"], datos_persona_id, data["IdRepresentante"])
-        )
-        row = cursor.fetchone()
-        if not row: raise EntityExceptions.EntityNotFound("Error al crear Estudiante")
-        estudiante_id = row[0]
-
-        cursor.execute(
-            """INSERT INTO "EstadoEstudiante" ("EstudianteId", "Estado") 
-               VALUES (%s, %s) RETURNING "EstadoEstudianteId";""",
-            (estudiante_id, 'revision')
-        )
-
-        cursor.execute(
-            "CALL registrar_curso_estudiante(%s, %s)",
-            (estudiante_id, data["IdCurso"])
-        )
-        
-        # Auditoría (Simplificada)
-        cursor.execute(
-            """INSERT INTO "Auditoria" ("UsuarioId", "Descripcion", "Accion") 
-               VALUES ((SELECT "UsuarioId" FROM "Usuario" WHERE "DatosPersona" = %s), %s, %s)""",
-            (data["IdRepresentante"], "Se registro un nuevo estudiante", "Registro")
-        )
-
-        # 5. Procesamiento de Archivos (CORRECCIÓN B: Antes del Commit)
-        # Usamos el estudiante_id que obtuvimos de la transacción abierta
-        
-        # --- FOTO CARNET ---
-        foto = files["FotoCarnet"]
-        # Asumo que tus funciones auxiliares (get_format, convert_to_webp) existen y funcionan
-        if get_format(foto.filename) not in ["png", "jpg", "jpeg", "webp"]:
-            raise ValidationError("Formato de foto inválido")
-        elif get_format(foto.filename) != "webp":
-            foto = convert_to_webp(foto)
-        
-        nombre_carnet = f"carnet-{estudiante_id}.webp"
-        full_path_carnet = os.path.join(app.config["UPLOAD_FOLDER"], nombre_carnet)
-        resized_foto = resize(foto)
-        resized_foto.save(full_path_carnet)
-        
-        # --- DOCUMENTOS PDF ---
-        # Definimos los nombres y rutas
-        docDni = files.get("DocDni")
-        if docDni:
-            nombre_dni = f"dni-{estudiante_id}.pdf"
-            full_path_dni = os.path.join(app.config["UPLOAD_FOLDER"], nombre_dni)
-            docDni.save(full_path_dni)
-
-        nombre_partida = f"partida-nacimiento-{estudiante_id}.pdf"
-        full_path_partida = os.path.join(app.config["UPLOAD_FOLDER"], nombre_partida)
-        files["DocPartidaNacimiento"].save(full_path_partida)
-
-        nombre_notas = f"notas-certificadas-{estudiante_id}.pdf"
-        full_path_notas = os.path.join(app.config["UPLOAD_FOLDER"], nombre_notas)
-        files["DocNotasCertificadas"].save(full_path_notas)
-
-        # 6. COMMIT FINAL
-        # Solo llegamos aquí si la DB insertó Y los archivos se guardaron en disco.
-        connection.commit()
-
-        return jsonify({"message": "Estudiante registrado exitosamente"}), 201
-
+        return jsonify({
+            "Nombre": row[0], "Apellido": row[1], "Genero": row[2], 
+            "Cedula": row[3], "Direccion": row[4], "FechaNacimiento": str(row[5]), 
+            "Parentesco": row[6], "IdCurso": row[7]
+        }), 200
     except Exception as err:
-        # 7. Manejo de Errores y Limpieza (Rollback + Borrado físico)
-        connection.rollback()
-        
-        # Borrar archivos si se llegaron a crear (CORRECCIÓN C: Variables seguras)
-        files_to_delete = [full_path_carnet, full_path_dni, full_path_partida, full_path_notas]
-        for path in files_to_delete:
-            if path and os.path.exists(path):
-                try:
-                    os.remove(path)
-                except OSError:
-                    pass # Loggear esto en producción
-
-        ex = exception_handler(err)
-        return jsonify(ex[0]), ex[1]
-        
+        conn.rollback()
+        return jsonify({"message": str(err)}), 500
     finally:
         cursor.close()
 
-
-@student_bp.route("/students/update", methods=["PUT"])
-def update():
-    conn = Connection().get_connection();
-    cursor = conn.cursor()
-    try:
-        payload = Security.verify_token(request.headers)
-        if not payload or payload["role"] != Rol.ADMIN.name:
-            raise Unauthorized()
-        data = request.get_json()
-        
-        return Response(status=200)
-    except Exception as err:
-        ex = exception_handler(err)
-        return jsonify(ex[0]), ex[1]
-    finally:
-        cursor.close()
-
-@student_bp.route("/students/count/by_parent", methods=["GET"])
-def get_by_parent():
-    conn = Connection().get_connection()
-    cursor = conn.cursor()
-
-    try:
-        payload = Security.verify_token(request.headers)
-
-        if not payload or payload["role"] != Rol.PARENT.name:
-            raise Unauthorized()
-
-        parent_id = payload["id"]
-
-        if not Validations.is_uuid(parent_id):
-            raise InvalidId(f"ID inválido: {parent_id}")
-        
-        cursor.execute("SELECT COUNT(\"EstudianteId\") FROM \"Estudiante\" WHERE \"RepresentanteId\"=%s;", (parent_id,))
-        count = cursor.fetchone()[0]
-
-        if not count:
-            count = 0
-        
-        return jsonify({"count": count}), 200
-    except Exception as err:
-        ex = exception_handler(err)
-        return jsonify(ex[0]), ex[1]
-    finally:
-        cursor.close()
-
-@student_bp.route("/students/by_parent/<string:parent_id>", methods=["GET"])
-def get_all_by_parent(parent_id: str):
-    conn = Connection().get_connection()
-    cursor = conn.cursor()
-    try:
-        payload = Security.verify_token(request.headers)
-
-        if not payload or payload["role"] != Rol.PARENT.name:
-            raise Unauthorized()
-
-        if not Validations.is_uuid(parent_id):
-            raise InvalidId(f"ID inválido: {parent_id}")
-        
-        cursor.execute("SELECT * FROM \"CursoEstudiante\" AS ce INNER JOIN \"Curso\" AS c ON c.\"CursoId\"=ce.\"CursoId\" INNER JOIN \"Estudiante\" AS e ON ce.\"EstudianteId\"=e.\"EstudianteId\" INNER JOIN \"DatosPersona\" AS dp ON e.\"DatosPersonaId\"=dp.\"DatosPersonaId\" INNER JOIN \"EstadoEstudiante\" AS ee ON ee.\"EstudianteId\"=e.\"EstudianteId\" WHERE e.\"RepresentanteId\"=%s;", (parent_id,))
-        students = cursor.fetchall()
-        logger.debug(students, "students")
-
-        return jsonify([{
-            "EstudianteId": s[0],
-            "FechaNacimiento": s[8],
-            "Curso": {
-                "CursoId": s[1],
-                "Grado": s[6],
-                "Seccion": number_to_letter(s[2])
-            },
-            "DatosPersona": {
-                "Nombre": s[15],
-                "Apellido": s[16],
-                "Sexo": s[17],
-                "Cedula": s[18]
-            },
-            "EstadoEstudiante": {
-                "EstadoEstudianteId": s[24],
-                "Estado": s[26]
-            }
-        } for s in students]), 200
-    except Exception as err:
-        ex = exception_handler(err)
-        return jsonify(ex[0]), ex[1]
-    finally:
-        cursor.close()
-
+# --- 4. FILTRAR SOLICITUDES (Admin) ---
 @student_bp.route("/students/filter", methods=["POST"])
 def filter_students():
-    conn = Connection().get_connection()
-    cursor = conn.cursor()
+    conn, cursor = get_db()
     try:
-        payload = Security.verify_token(request.headers)
+        data = request.get_json() or {}
+        estado = data.get("Estado", "revision")
 
-        if not payload or payload["role"] != Rol.ADMIN.name:
-            raise Unauthorized()
+        query = """
+            SELECT e."EstudianteId", ee."Estado", dp."Nombre", dp."Apellido", dp."Cedula", 
+                   c."Grado", ce."Seccion", e."FechaNacimiento",
+                   rep."Nombre", rep."Apellido", u."UsuarioId", u."Email",
+                   dp."Sexo", dp."Direccion"
+            FROM "Estudiante" e
+            JOIN "DatosPersona" dp ON e."DatosPersonaId" = dp."DatosPersonaId"
+            JOIN "EstadoEstudiante" ee ON e."EstudianteId" = ee."EstudianteId"
+            JOIN "CursoEstudiante" ce ON e."EstudianteId" = ce."EstudianteId"
+            JOIN "Curso" c ON ce."CursoId" = c."CursoId"
+            JOIN "DatosPersona" rep ON e."RepresentanteId" = rep."DatosPersonaId"
+            LEFT JOIN "Usuario" u ON rep."DatosPersonaId" = u."DatosPersona"
+            WHERE ee."Estado" = %s
+        """
+        cursor.execute(query, (estado,))
+        rows = cursor.fetchall()
         
-        data = request.get_json()
-        
-        if "CursoId" in data and data["CursoId"] and not Validations.is_uuid(data["CursoId"]):
-            raise ValidationError("El ID del curso es inválido.")
-        elif "Estado" in data and not data["Estado"] in ("revision", "inscrito", "retirado", "graduado"):
-            raise ValidationError("El estado del estudiante es inválido.")
-        elif "Busqueda" in data and data["Busqueda"] and not Validations.is_name(data["Busqueda"]) and not Validations.is_ci(data["Busqueda"]):
-            raise ValidationError("La busqueda ingresada no es un nombre ni una cédula.")
-        elif "Seccion" in data and data["Seccion"] and not Validations.is_section(data["Seccion"]):
-            raise ValidationError("La sección es inválida.")
-        
-        query = """SELECT * FROM "EstadoEstudiante" AS ee
-                    INNER JOIN "Estudiante" AS E ON e."EstudianteId"=ee."EstudianteId"
-                    INNER JOIN "DatosPersona" AS dp ON dp."DatosPersonaId"=e."DatosPersonaId"
-                    INNER JOIN "DatosPersona" AS r ON r."DatosPersonaId"=e."RepresentanteId"
-                    INNER JOIN "CursoEstudiante" AS ce ON ce."EstudianteId"=e."EstudianteId"
-                    INNER JOIN "Curso" AS c ON c."CursoId"=ce."CursoId"
-                    INNER JOIN "Usuario" AS u ON u."DatosPersona"=r."DatosPersonaId" """
-        
-        if "CursoId" in data or "Estado" in data or "Busqueda" in data:
-            query += "WHERE "
-
-        if "CursoId" in data and data["CursoId"]:
-            query += f"ce.\"CursoId\" = '{data['CursoId']}' AND "
-        if "Estado" in data and data["Estado"]:
-            query += f"ee.\"Estado\" = '{data['Estado']}' AND "
-        if "Seccion" in data and data["Seccion"]:
-            query += f"ce.\"Seccion\" = '{data['Seccion']}' AND "
-        if "Busqueda" in data and data["Busqueda"] and Validations.is_ci(data["Busqueda"]):
-            query += f"dp.\"Cedula\" = '{data['Busqueda']}' AND "
-        elif "Busqueda" in data and data["Busqueda"]:
-            splited_name = data["Busqueda"].split()
-            name = splited_name[0]
-            last_name = splited_name[-1]
-            query += f"(dp.\"Nombre\" LIKE '%{name}%'"
-            if len(splited_name) > 1:
-                query += f" AND dp.\"Apellido\" LIKE '%{last_name}%'"
-            query += ") AND "
-        
-        query = query.rsplit(" AND ", 1)[0] + "ORDER BY ee.\"Activo\" DESC, ee.\"FechaCreacion\" DESC;"
-        logger.debug(query, "query")
-        cursor.execute(query)
-        students = cursor.fetchall()
-        logger.debug(query, "students")
-
         return jsonify([{
-            "EstudianteId": s[1],
-            "Estado": s[2],
-            "Activo": s[4],
-            "FechaNacimiento": s[6],
-            "Parentesco": s[7],
+            "EstudianteId": r[0],
+            "Estado": r[1],
+            "FechaNacimiento": str(r[7]),
             "DatosPersona": {
-                "DatosPersonaId": s[8],
-                "Nombre": s[13],
-                "Apellido": s[14],
-                "Sexo": s[15],
-                "Cedula": s[16],
-                "Direccion": s[18]
-            },
-            "Representante": {
-                "DatosPersonaId": s[22],
-                "Nombre": s[23],
-                "Apellido": s[24],
-                "Sexo": s[25],
-                "Cedula": s[26],
-                "Telefono": s[27],
-                "Direccion": s[28],
-                "Ocupacion": s[29],
-                "UsuarioId": s[39],
-                "Email": s[40],
+                "Nombre": r[2], "Apellido": r[3], "Cedula": r[4],
+                "Sexo": r[12],      
+                "Direccion": r[13]
             },
             "Curso": {
-                "CursoId": s[37],
-                "Grado": s[38],
-                "Seccion": s[34]
+                "Grado": r[5], "Seccion": number_to_letter(r[6])
+            },
+            "Representante": {
+                "Nombre": r[8], 
+                "Apellido": r[9],
+                "UsuarioId": r[10] if r[10] else "Sin Usuario", 
+                "Email": r[11] if r[11] else "Sin Email"
             }
-        } for s in students]), 200
-    except Exception as err:
-        ex = exception_handler(err)
-        return jsonify(ex[0]), ex[1]
-    finally:
-        cursor.close()
-
-@student_bp.route("/students/approve/<string:student_id>", methods=["PUT"])
-def approve_student(student_id: str):
-    conn = Connection().get_connection()
-    cursor = conn.cursor()
-    try:
-        payload = Security.verify_token(request.headers)
-
-        if not payload or payload["role"] != Rol.ADMIN.name:
-            raise Unauthorized()
-
-        if not Validations.is_uuid(student_id):
-            raise InvalidId(f"ID inválido: {student_id}")
-        
-        cursor.execute("UPDATE \"EstadoEstudiante\" SET \"Estado\"='inscrito', \"Activo\"=TRUE WHERE \"EstudianteId\"=%s;", (student_id,))
-        conn.commit()
-
-        return Response(status=204)
+        } for r in rows]), 200
     except Exception as err:
         conn.rollback()
-        ex = exception_handler(err)
-        return jsonify(ex[0]), ex[1]
+        print(f"Error filter: {err}")
+        return jsonify({"message": str(err)}), 500
     finally:
         cursor.close()
 
-
-@student_bp.route("/students/reject/<string:student_id>", methods=["PUT"])
-def reject_student(student_id: str):
-    conn = Connection().get_connection()
-    cursor = conn.cursor()
+# --- 5. APROBAR ESTUDIANTE ---
+@student_bp.route("/students/approve/<string:id>", methods=["PUT"])
+def approve_student(id):
+    conn, cursor = get_db()
     try:
-        payload = Security.verify_token(request.headers)
+        # Cambiamos estado a 'inscrito'
+        cursor.execute('UPDATE "EstadoEstudiante" SET "Estado" = \'inscrito\' WHERE "EstudianteId" = %s', (id,))
+        # Activamos al estudiante
+        cursor.execute('UPDATE "Estudiante" SET "Activo" = TRUE WHERE "EstudianteId" = %s', (id,))
+        conn.commit()
+        return jsonify({"message": "Estudiante aprobado exitosamente"}), 200
+    except Exception as err:
+        conn.rollback()
+        return jsonify({"message": str(err)}), 500
+    finally:
+        cursor.close()
 
-        if not payload or payload["role"] != Rol.ADMIN.name:
-            raise Unauthorized()
+# --- 6. RECHAZAR ESTUDIANTE ---
+@student_bp.route("/students/reject/<string:id>", methods=["PUT"])
+def reject_student(id):
+    conn, cursor = get_db()
+    try:
+        # data = request.get_json() # Si quisieras guardar el motivo
+        
+        # Cambiamos estado a 'rechazado'
+        cursor.execute('UPDATE "EstadoEstudiante" SET "Estado" = \'rechazado\' WHERE "EstudianteId" = %s', (id,))
+        # Desactivamos temporalmente
+        cursor.execute('UPDATE "Estudiante" SET "Activo" = FALSE WHERE "EstudianteId" = %s', (id,))
+        conn.commit()
+        return jsonify({"message": "Solicitud rechazada"}), 200
+    except Exception as err:
+        conn.rollback()
+        return jsonify({"message": str(err)}), 500
+    finally:
+        cursor.close()
 
-        if not Validations.is_uuid(student_id):
-            raise InvalidId(f"ID inválido: {student_id}")
+# --- 7. CORREGIR SOLICITUD ---
+@student_bp.route("/students/correct_application/<string:id>", methods=["PUT"])
+def correct_application(id):
+    conn, cursor = get_db()
+    try:
+        data = request.form
+        cursor.execute('SELECT "DatosPersonaId" FROM "Estudiante" WHERE "EstudianteId" = %s', (id,))
+        row = cursor.fetchone()
+        if not row: raise Exception("Estudiante no encontrado")
+        
+        dp_id = row[0]
+        cursor.execute('UPDATE "DatosPersona" SET "Nombre"=%s, "Apellido"=%s, "Cedula"=%s, "Direccion"=%s WHERE "DatosPersonaId"=%s',
+                       (data["Nombre"], data["Apellido"], data["Cedula"], data["Direccion"], dp_id))
+        
+        cursor.execute('UPDATE "EstadoEstudiante" SET "Estado" = \'revision\' WHERE "EstudianteId" = %s', (id,))
+        
+        conn.commit()
+        return jsonify({"message": "Solicitud enviada a revisión"}), 200
+    except Exception as err:
+        conn.rollback()
+        return jsonify({"message": str(err)}), 500
+    finally:
+        cursor.close()
 
+# --- 8. OBTENER POR REPRESENTANTE (CORREGIDO AQUI) ---
+@student_bp.route("/students/by_parent/<string:parent_id>", methods=["GET"])
+def get_all_by_parent(parent_id):
+    conn, cursor = get_db()
+    try:
+        query = """
+            SELECT DISTINCT ON (e."EstudianteId") 
+                   e."EstudianteId", e."FechaNacimiento", c."Grado", ce."Seccion", 
+                   dp."Nombre", dp."Apellido", dp."Sexo", dp."Cedula", ee."Estado"
+            FROM "Estudiante" e 
+            JOIN "CursoEstudiante" ce ON ce."EstudianteId"=e."EstudianteId" 
+            JOIN "Curso" c ON c."CursoId"=ce."CursoId" 
+            JOIN "DatosPersona" dp ON e."DatosPersonaId"=dp."DatosPersonaId" 
+            JOIN "EstadoEstudiante" ee ON ee."EstudianteId"=e."EstudianteId" 
+            WHERE e."RepresentanteId"=%s 
+            ORDER BY e."EstudianteId", c."Grado" DESC
+        """
+        cursor.execute(query, (parent_id,))
+        rows = cursor.fetchall()
+        
+        return jsonify([
+            {
+                "EstudianteId": r[0], 
+                "FechaNacimiento": str(r[1]), # <--- AGREGADO: Fecha de Nacimiento
+                "Curso": {"Grado": r[2], "Seccion": number_to_letter(r[3])}, 
+                "DatosPersona": {
+                    "Nombre": r[4], 
+                    "Apellido": r[5], 
+                    "Sexo": r[6],       # <--- AGREGADO: Sexo (para el avatar)
+                    "Cedula": r[7]
+                }, 
+                "EstadoEstudiante": {"Estado": r[8]}
+            } for r in rows
+        ]), 200
+    except Exception as err:
+        conn.rollback()
+        return jsonify({"message": str(err)}), 500
+    finally:
+        cursor.close()
+
+# --- 9. CONTAR ---
+@student_bp.route("/students/count/by_parent/<string:parent_id>", methods=["GET"])
+def count_by_parent(parent_id):
+    conn, cursor = get_db()
+    try:
+        cursor.execute('SELECT COUNT(*) FROM "Estudiante" WHERE "RepresentanteId" = %s', (parent_id,))
+        row = cursor.fetchone()
+        return jsonify({"count": row[0] if row else 0}), 200
+    except Exception as err:
+        conn.rollback()
+        return jsonify({"message": str(err)}), 500
+    finally:
+        cursor.close()
+
+# --- 10. CAMBIAR ESTADO (Admin) ---
+@student_bp.route("/students/change_status/<string:id>", methods=["PUT"])
+def change_status(id):
+    conn, cursor = get_db()
+    try:
         data = request.get_json()
-
-        if "Email" not in data or not data["Email"]:
-            raise ValidationError("Debes enviar un email para rechazar al estudiante.")
-        elif "Email" in data and not Validations.is_email(data["Email"]):
-            raise ValidationError("El email es inválido.")
-        elif "Motivo" not in data or not data["Motivo"]:
-            raise ValidationError("Debes enviar un motivo para rechazar al estudiante.")
-        elif "Descripcion" not in data or not data["Descripcion"]:
-            raise ValidationError("Debes enviar una descripción para rechazar al estudiante.")
-        elif "Descripcion" in data and len(data["Descripcion"]) > 200:
-            raise ValidationError("La descripción es muy larga.")
-        elif "Descripcion" in data and len(data["Descripcion"]) < 10:
-            raise ValidationError("La descripción es muy corta.")
+        new_status = data.get("Estado")
         
-        # cursor.execute("UPDATE \"EstadoEstudiante\" SET \"Estado\"='revision', \"Activo\"=FALSE WHERE \"EstudianteId\"=%s;", (student_id,))
-        cursor.execute("""SELECT "DatosPersonaId" FROM "Estudiante" WHERE "EstudianteId"=%s;""", (student_id,))
-        persona_id = cursor.fetchone()[0]
+        # Validar el estado
+        valid_statuses = ["inscrito", "retirado", "graduado", "revision", "rechazado"]
+        if new_status not in valid_statuses:
+             return jsonify({"message": "Estado no válido"}), 400
 
-        cursor.execute(
-            """
-            DELETE FROM "EstadoEstudiante" WHERE "EstudianteId"=%s;
-            DELETE FROM "CursoEstudiante" WHERE "EstudianteId"=%s;
-            DELETE FROM "Estudiante" WHERE "EstudianteId"=%s;
-            DELETE FROM "DatosPersona" WHERE "DatosPersonaId"=%s;
-            """,
-            (student_id, student_id, student_id, persona_id)
-        )
+        # Actualizar tabla EstadoEstudiante
+        cursor.execute('UPDATE "EstadoEstudiante" SET "Estado" = %s WHERE "EstudianteId" = %s', (new_status, id))
+        
+        # Actualizar Activo en tabla Estudiante
+        # Si es inscrito o revisión -> Activo
+        # Si es retirado, graduado o rechazado -> Inactivo
+        is_active = True if new_status in ["inscrito", "revision"] else False
+        cursor.execute('UPDATE "Estudiante" SET "Activo" = %s WHERE "EstudianteId" = %s', (is_active, id))
+
         conn.commit()
-
-        html = render_template("reject-email.html", motivo=data["Motivo"], descripcion=data["Descripcion"], date=datetime.now().strftime("%A %d/%m/%Y"))
-
-        send_email(data["Email"], data["Motivo"], html, data["Descripcion"])
-
-        return Response(status=204)
+        return jsonify({"message": f"Estado actualizado a {new_status}"}), 200
     except Exception as err:
         conn.rollback()
-        ex = exception_handler(err)
-        return jsonify(ex[0]), ex[1]
-    finally:
-        cursor.close()
-
-@student_bp.route("/students/count", methods=["GET"])
-def count():
-    conn = Connection().get_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute("SELECT COUNT(\"EstudianteId\") FROM \"EstadoEstudiante\" WHERE \"Estado\"='inscrito'")
-        count = cursor.fetchone()[0]
-
-        if not count:
-            count = 0
-        
-        return jsonify({"count": count}), 200
-    except Exception as err:
-        conn.rollback()
-        ex = exception_handler(err)
-        return jsonify(ex[0]), ex[1]
+        return jsonify({"message": str(err)}), 500
     finally:
         cursor.close()
