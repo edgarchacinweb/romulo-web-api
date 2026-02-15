@@ -3,3 +3,4 @@
 logs.txt
 **/__pycache__/
 uploads/*.*
+backups/*.*
