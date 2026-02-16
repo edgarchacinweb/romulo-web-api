@@ -15,15 +15,16 @@ auditory = AuditoriaRep()
 
 subject_bp = Blueprint("subject", __name__)
 
-subject_bp.route("/subject/list", methods=["GET"])
+@subject_bp.route("/subject/list", methods=["GET"])
 def list_subjects():
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
     try:
         payload = Security.verify_token(request.headers)
 
         if not payload or payload["role"] != Rol.ADMIN.name and payload["role"] != Rol.TEACHER.name:
             raise Unauthorized()
 
-        cursor = Connection().get_connection().cursor()
         cursor.execute("SELECT * FROM \"Materia\" WHERE \"Activo\" = true;")
         rows = cursor.fetchall()
 
@@ -33,5 +34,42 @@ def list_subjects():
             "Nombre": s[2]
         } for s in rows]), 200
     except Exception as err:
+        conn.rollback()
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
+
+@subject_bp.route("/subject/create", methods=["POST"])
+def create_subject():
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+    try:
+        payload = Security.verify_token(request.headers)
+
+        if not payload or payload["role"] != Rol.ADMIN.name:
+            raise Unauthorized()
+
+        data = request.get_json()
+
+        if "Nivel" not in data:
+            raise MissingField("Debes indicar si la materia pertenece a un nivel de secundaria o de bachillerato")
+        elif data["nivel"] not in ["Secundaria", "Bachillerato"]:
+            raise BadRequest("El nivel debe ser 'Secundaria' o 'Bachillerato'")
+        elif "Nombre" not in data:
+            raise MissingField("Debes indicar el nombre de la materia")
+        elif len(data["Nombre"]) < 3:
+            raise InsertEntityError("El nombre de la materia debe tener al menos 3 caracteres")
+        elif not Validations.is_subject(data["Nombre"]):
+            raise InsertEntityError("El nombre de la materia tiene un formato inválido")
+
+        cursor.execute("INSERT INTO \"Materia\" (\"Nivel\", \"Nombre\") VALUES (%s, %s);", (data["nivel"], data["nombre"]))
+        conn.commit()
+
+        return jsonify({"message": "Materia creada exitosamente"}), 200
+    except Exception as err:
+        conn.rollback()
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()

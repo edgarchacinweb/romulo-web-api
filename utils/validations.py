@@ -80,7 +80,7 @@ class Validations():
 
     @classmethod
     def is_subject(self, subject: str):
-        return bool(re.match(r"^(?!\s)(?!.*\s$)(?=.*[a-zA-ZñáéíóúÁÉÍÓÚ]).{3,50}$", subject))
+        return bool(re.match(r"/^[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ]{3,}(?: [a-zA-ZáéíóúÁÉÍÓÚñÑüÜ]{3,})*$/", subject))
     
     @classmethod
     def is_grade(self, grade):
