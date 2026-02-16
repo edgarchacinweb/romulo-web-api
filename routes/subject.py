@@ -73,3 +73,27 @@ def create_subject():
         return jsonify(ex[0]), ex[1]
     finally:
         cursor.close()
+
+@subject_bp.route("/subject/delete/<string:id>", methods=["DELETE"])
+def delete_subject(id):
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+    try:
+        payload = Security.verify_token(request.headers)
+
+        if not payload or payload["role"] != Rol.ADMIN.name:
+            raise Unauthorized()
+
+        if not Validations.is_uuid(id):
+            raise BadRequest("El ID de la materia es inválido")
+
+        cursor.execute("UPDATE \"Materia\" SET \"Activo\" = false WHERE \"MateriaId\" = %s;", (id,))
+        conn.commit()
+
+        return Response(status=200)
+    except Exception as err:
+        conn.rollback()
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
