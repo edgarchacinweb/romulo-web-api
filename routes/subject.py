@@ -63,10 +63,11 @@ def create_subject():
         elif not Validations.is_subject(data["Nombre"]):
             raise InsertEntityError("El nombre de la materia tiene un formato inválido")
 
-        cursor.execute("INSERT INTO \"Materia\" (\"Nivel\", \"Nombre\") VALUES (%s, %s);", (data["nivel"], data["nombre"]))
+        cursor.execute("INSERT INTO \"Materia\" (\"Nivel\", \"Nombre\") VALUES (%s, %s); RETURNING \"MateriaId\"", (data["nivel"], data["nombre"]))
         conn.commit()
+        subject_id = cursor.fetchone()[0]
 
-        return jsonify({"message": "Materia creada exitosamente"}), 200
+        return jsonify({"MateriaId": subject_id}), 201
     except Exception as err:
         conn.rollback()
         ex = exception_handler(err)
