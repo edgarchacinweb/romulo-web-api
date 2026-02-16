@@ -54,16 +54,16 @@ def create_subject():
 
         if "Nivel" not in data:
             raise MissingField("Debes indicar si la materia pertenece a un nivel de secundaria o de bachillerato")
-        elif data["nivel"] not in ["Secundaria", "Bachillerato"]:
+        elif data["Nivel"] not in ["Secundaria", "Bachillerato"]:
             raise BadRequest("El nivel debe ser 'Secundaria' o 'Bachillerato'")
         elif "Nombre" not in data:
             raise MissingField("Debes indicar el nombre de la materia")
         elif len(data["Nombre"]) < 3:
             raise InsertEntityError("El nombre de la materia debe tener al menos 3 caracteres")
-        elif not Validations.is_subject(data["Nombre"]):
-            raise InsertEntityError("El nombre de la materia tiene un formato inválido")
+        # elif not Validations.is_subject(data["Nombre"]):
+        #     raise InsertEntityError("El nombre de la materia tiene un formato inválido")
 
-        cursor.execute("INSERT INTO \"Materia\" (\"Nivel\", \"Nombre\") VALUES (%s, %s); RETURNING \"MateriaId\"", (data["nivel"], data["nombre"]))
+        cursor.execute("INSERT INTO \"Materia\" (\"Nivel\", \"Nombre\") VALUES (%s, %s) RETURNING \"MateriaId\";", (data["Nivel"], data["Nombre"]))
         conn.commit()
         subject_id = cursor.fetchone()[0]
 
