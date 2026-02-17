@@ -38,6 +38,11 @@ CREATE TYPE tipo_parentesco AS ENUM (
 'Otro'
 );
 
+CREATE TYPE "nivel" AS ENUM (
+'Secundaria',
+'Bachillerato'
+);
+
 CREATE TABLE "Clase" (
 "ClaseId" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
 "DocenteId" UUID NOT NULL,
@@ -58,6 +63,7 @@ CREATE TABLE "Asistencia" (
 
 CREATE TABLE "Materia" (
 "MateriaId" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+"Nivel" NIVEL NOT NULL,
 "Nombre" VARCHAR(50) NOT NULL UNIQUE,
 "Activo" BOOLEAN DEFAULT TRUE,
 "FechaCreacion" TIMESTAMP DEFAULT clock_timestamp()
@@ -230,19 +236,6 @@ CREATE INDEX Cedula_index ON "DatosPersona" ("Cedula");
 
 INSERT INTO "Curso" ("Grado") VALUES (1), (2), (3), (4), (5);
 INSERT INTO "Usuario" ("Email", "Clave", "Rol") VALUES ('romulogallegosproyecto@gmail.com', '$2b$10$w75IUe68HwWRQGXmLGVQmumMWLHcubkDLCEsBq1lmNrKvNgflcOuO', 'administrador');
-
-INSERT INTO "Materia" ("Nombre")
-VALUES
-('Matemáticas'),
-('Castellano'),
-('G.H.S'),
-('Educación Física'),
-('Inglés'),
-('Biología'),
-('Química'),
-('Física'),
-('Economía'),
-('Arte y Patrimonio');
 
 INSERT INTO "BloqueHorario" ("HoraInicio", "HoraFin")
 VALUES
