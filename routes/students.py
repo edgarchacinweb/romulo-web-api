@@ -15,6 +15,34 @@ def get_db():
     cursor = conn.cursor()
     return conn, cursor
 
+# --- FUNCIÓN AUXILIAR: ASIGNACIÓN INTELIGENTE DE SECCIÓN ---
+def obtener_seccion_disponible(cursor, curso_id, periodo_id):
+    """
+    Busca la primera sección (1=A, 2=B...) que tenga menos de 30 estudiantes
+    inscritos en el periodo actual.
+    """
+    CAPACIDAD_MAXIMA = 30
+    
+    # Probamos secciones de la 1 (A) a la 20 (T)
+    for seccion_num in range(1, 21):
+        # Contamos cuántos estudiantes hay en esta sección, curso y periodo
+        query = """
+            SELECT COUNT(*) 
+            FROM "CursoEstudiante" 
+            WHERE "CursoId" = %s 
+            AND "Seccion" = %s 
+            AND "PeriodoEscolarId" = %s
+        """
+        cursor.execute(query, (curso_id, seccion_num, periodo_id))
+        cantidad = cursor.fetchone()[0]
+        
+        # Si hay espacio (menos de 30), retornamos esta sección
+        if cantidad < CAPACIDAD_MAXIMA:
+            print(f"Asignando Sección {number_to_letter(seccion_num)} ({cantidad}/{CAPACIDAD_MAXIMA} ocupados)")
+            return seccion_num
+            
+    return 1 # Fallback: Si todo está lleno, asigna a la A (o podrías lanzar error)
+
 # --- 1. VERIFICAR PERIODO ---
 @student_bp.route("/students/check_period", methods=["GET"])
 def check_period():
@@ -31,7 +59,7 @@ def check_period():
     finally:
         cursor.close()
 
-# --- 2. CREAR ESTUDIANTE ---
+# --- 2. CREAR ESTUDIANTE (LOGICA MEJORADA) ---
 @student_bp.route("/students/create", methods=["POST"])
 def create():
     conn, cursor = get_db()
@@ -41,21 +69,45 @@ def create():
 
         data, files = request.form, request.files
 
+        # 1. Crear Datos Persona
         cursor.execute("""INSERT INTO "DatosPersona" ("Nombre", "Apellido", "Sexo", "Cedula", "Direccion") 
                            VALUES (%s,%s,%s,%s,%s) RETURNING "DatosPersonaId";""",
                         (data["Nombre"], data["Apellido"], data["Genero"], data["Cedula"], data["Direccion"]))
         dp_id = cursor.fetchone()[0]
 
+        # 2. Crear Estudiante
         cursor.execute("""INSERT INTO "Estudiante" ("FechaNacimiento", "Parentesco", "DatosPersonaId", "RepresentanteId") 
                            VALUES (%s,%s,%s,%s) RETURNING "EstudianteId";""",
                         (data["FechaNacimiento"], data["Parentesco"], dp_id, data["IdRepresentante"]))
         est_id = cursor.fetchone()[0]
 
+        # 3. Estado Inicial
         cursor.execute('INSERT INTO "EstadoEstudiante" ("EstudianteId", "Estado") VALUES (%s, \'revision\')', (est_id,))
         
-        val_curso = str(data["IdCurso"]).strip()
-        cursor.execute('CALL registrar_curso_estudiante(%s, %s)', (est_id, val_curso))
+        # --- ASIGNACIÓN DE SECCIÓN INTELIGENTE ---
+        val_curso_id = str(data["IdCurso"]).strip()
+        
+        # A. Buscamos el periodo activo
+        cursor.execute('SELECT "PeriodoEscolarId" FROM "PeriodoInscripcion" WHERE "Activo" = TRUE LIMIT 1;')
+        periodo_row = cursor.fetchone()
+        
+        if not periodo_row:
+            # Si no hay periodo activo, no podemos asignar sección correctamente
+            raise Exception("No hay un periodo escolar activo para inscribir.")
+        
+        periodo_id = periodo_row[0]
 
+        # B. Calculamos la sección disponible (A, B, C...) usando la función auxiliar
+        seccion_asignada = obtener_seccion_disponible(cursor, val_curso_id, periodo_id)
+
+        # C. Insertamos manualmente en CursoEstudiante con la sección calculada
+        cursor.execute("""
+            INSERT INTO "CursoEstudiante" ("EstudianteId", "CursoId", "Seccion", "PeriodoEscolarId")
+            VALUES (%s, %s, %s, %s)
+        """, (est_id, val_curso_id, seccion_asignada, periodo_id))
+        # -----------------------------------------
+
+        # 4. Guardar Archivos
         if "FotoCarnet" in files:
             path = os.path.join(app.config["UPLOAD_FOLDER"], f"carnet-{est_id}.webp")
             resize(convert_to_webp(files["FotoCarnet"])).save(path)
@@ -67,7 +119,8 @@ def create():
                 files[key].save(path)
 
         conn.commit()
-        return jsonify({"message": "Estudiante registrado con éxito"}), 201
+        # Mostramos en el mensaje la sección asignada para confirmar
+        return jsonify({"message": f"Estudiante registrado con éxito en la sección {number_to_letter(seccion_asignada)}"}), 201
     except Exception as err:
         conn.rollback()
         print(f"Error create: {err}")
@@ -214,7 +267,7 @@ def correct_application(id):
     finally:
         cursor.close()
 
-# --- 8. OBTENER POR REPRESENTANTE (CORREGIDO AQUI) ---
+# --- 8. OBTENER POR REPRESENTANTE ---
 @student_bp.route("/students/by_parent/<string:parent_id>", methods=["GET"])
 def get_all_by_parent(parent_id):
     conn, cursor = get_db()
@@ -237,12 +290,12 @@ def get_all_by_parent(parent_id):
         return jsonify([
             {
                 "EstudianteId": r[0], 
-                "FechaNacimiento": str(r[1]), # <--- AGREGADO: Fecha de Nacimiento
+                "FechaNacimiento": str(r[1]),
                 "Curso": {"Grado": r[2], "Seccion": number_to_letter(r[3])}, 
                 "DatosPersona": {
                     "Nombre": r[4], 
                     "Apellido": r[5], 
-                    "Sexo": r[6],       # <--- AGREGADO: Sexo (para el avatar)
+                    "Sexo": r[6],
                     "Cedula": r[7]
                 }, 
                 "EstadoEstudiante": {"Estado": r[8]}
@@ -285,8 +338,6 @@ def change_status(id):
         cursor.execute('UPDATE "EstadoEstudiante" SET "Estado" = %s WHERE "EstudianteId" = %s', (new_status, id))
         
         # Actualizar Activo en tabla Estudiante
-        # Si es inscrito o revisión -> Activo
-        # Si es retirado, graduado o rechazado -> Inactivo
         is_active = True if new_status in ["inscrito", "revision"] else False
         cursor.execute('UPDATE "Estudiante" SET "Activo" = %s WHERE "EstudianteId" = %s', (is_active, id))
 
