@@ -156,7 +156,7 @@ def get_student(id):
     finally:
         cursor.close()
 
-# --- 4. FILTRAR SOLICITUDES (Admin) ---
+# --- 4. FILTRAR SOLICITUDES (Admin) - CORREGIDO ---
 @student_bp.route("/students/filter", methods=["POST"])
 def filter_students():
     conn, cursor = get_db()
@@ -164,11 +164,14 @@ def filter_students():
         data = request.get_json() or {}
         estado = data.get("Estado", "revision")
 
+        # SQL Actualizado: Ahora seleccionamos TODOS los campos del representante (alias 'rep')
+        # y el campo Parentesco del estudiante.
         query = """
             SELECT e."EstudianteId", ee."Estado", dp."Nombre", dp."Apellido", dp."Cedula", 
                    c."Grado", ce."Seccion", e."FechaNacimiento",
                    rep."Nombre", rep."Apellido", u."UsuarioId", u."Email",
-                   dp."Sexo", dp."Direccion"
+                   dp."Sexo", dp."Direccion",
+                   e."Parentesco", rep."Cedula", rep."Telefono", rep."Ocupacion", rep."Direccion"
             FROM "Estudiante" e
             JOIN "DatosPersona" dp ON e."DatosPersonaId" = dp."DatosPersonaId"
             JOIN "EstadoEstudiante" ee ON e."EstudianteId" = ee."EstudianteId"
@@ -185,6 +188,7 @@ def filter_students():
             "EstudianteId": r[0],
             "Estado": r[1],
             "FechaNacimiento": str(r[7]),
+            "Parentesco": r[14], # Añadido
             "DatosPersona": {
                 "Nombre": r[2], "Apellido": r[3], "Cedula": r[4],
                 "Sexo": r[12],      
@@ -197,7 +201,11 @@ def filter_students():
                 "Nombre": r[8], 
                 "Apellido": r[9],
                 "UsuarioId": r[10] if r[10] else "Sin Usuario", 
-                "Email": r[11] if r[11] else "Sin Email"
+                "Email": r[11] if r[11] else "Sin Email",
+                "Cedula": r[15],    # Añadido
+                "Telefono": r[16],  # Añadido
+                "Ocupacion": r[17], # Añadido
+                "Direccion": r[18]  # Añadido
             }
         } for r in rows]), 200
     except Exception as err:
