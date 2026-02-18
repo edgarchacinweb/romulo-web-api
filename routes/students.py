@@ -156,16 +156,20 @@ def get_student(id):
     finally:
         cursor.close()
 
-# --- 4. FILTRAR SOLICITUDES (Admin) - CORREGIDO ---
+# --- 4. FILTRAR SOLICITUDES (Admin) - CORREGIDO Y POTENCIADO ---
 @student_bp.route("/students/filter", methods=["POST"])
 def filter_students():
     conn, cursor = get_db()
     try:
         data = request.get_json() or {}
+        
+        # Recuperamos los filtros del Frontend
         estado = data.get("Estado", "revision")
+        busqueda = data.get("Busqueda", "").strip()
+        curso_id = data.get("CursoId", "")
+        seccion = data.get("Seccion", "")
 
-        # SQL Actualizado: Ahora seleccionamos TODOS los campos del representante (alias 'rep')
-        # y el campo Parentesco del estudiante.
+        # Consulta Base
         query = """
             SELECT e."EstudianteId", ee."Estado", dp."Nombre", dp."Apellido", dp."Cedula", 
                    c."Grado", ce."Seccion", e."FechaNacimiento",
@@ -181,14 +185,39 @@ def filter_students():
             LEFT JOIN "Usuario" u ON rep."DatosPersonaId" = u."DatosPersona"
             WHERE ee."Estado" = %s
         """
-        cursor.execute(query, (estado,))
+        params = [estado]
+
+        # --- APLICACIÓN DINÁMICA DE FILTROS ---
+        
+        # 1. Filtro por Grado (Curso)
+        if curso_id and curso_id != "undefined" and curso_id != "":
+            query += ' AND ce."CursoId" = %s'
+            params.append(curso_id)
+
+        # 2. Filtro por Sección
+        if seccion and seccion != "undefined" and seccion != "":
+            query += ' AND ce."Seccion" = %s'
+            params.append(int(seccion))
+
+        # 3. Filtro por Búsqueda (Nombre, Apellido o Cédula del Estudiante)
+        if busqueda:
+            query += """ AND (
+                dp."Nombre" ILIKE %s OR 
+                dp."Apellido" ILIKE %s OR 
+                CAST(dp."Cedula" AS TEXT) ILIKE %s
+            )"""
+            search_term = f"%{busqueda}%"
+            params.extend([search_term, search_term, search_term])
+
+        # Ejecutamos la consulta con todos los parámetros acumulados
+        cursor.execute(query, tuple(params))
         rows = cursor.fetchall()
         
         return jsonify([{
             "EstudianteId": r[0],
             "Estado": r[1],
             "FechaNacimiento": str(r[7]),
-            "Parentesco": r[14], # Añadido
+            "Parentesco": r[14],
             "DatosPersona": {
                 "Nombre": r[2], "Apellido": r[3], "Cedula": r[4],
                 "Sexo": r[12],      
@@ -202,10 +231,10 @@ def filter_students():
                 "Apellido": r[9],
                 "UsuarioId": r[10] if r[10] else "Sin Usuario", 
                 "Email": r[11] if r[11] else "Sin Email",
-                "Cedula": r[15],    # Añadido
-                "Telefono": r[16],  # Añadido
-                "Ocupacion": r[17], # Añadido
-                "Direccion": r[18]  # Añadido
+                "Cedula": r[15],
+                "Telefono": r[16],
+                "Ocupacion": r[17],
+                "Direccion": r[18]
             }
         } for r in rows]), 200
     except Exception as err:
