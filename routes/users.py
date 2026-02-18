@@ -56,6 +56,14 @@ def register():
 
         if not Validations.is_email(data["Email"]):
             raise ValidationError("El correo electrónico introducido no es valido")
+        
+        # --- VALIDACIÓN NUEVA DE DOMINIO DE CORREO ---
+        email_domain = data["Email"].split('@')[1].lower()
+        allowed_domains = ["gmail.com", "outlook.com", "hotmail.com", "yahoo.com"]
+        if email_domain not in allowed_domains:
+            raise ValidationError("Solo se permiten correos: Gmail, Outlook, Hotmail o Yahoo")
+        # ---------------------------------------------
+
         elif not any(r in data["Rol"] for r in (Rol.PARENT.value, Rol.TEACHER.value)):
             raise ValidationError("Sólo puedes registrar un representante o un docente")
         elif not Validations.is_uuid(data["DatosPersonaId"]):
