@@ -5,6 +5,7 @@ from utils.image import resize, convert_to_webp
 from models.Usuario import Rol
 from utils.handler import exception_handler
 from utils.helpers import number_to_letter
+from utils.email import send_email  # <--- IMPORTANTE: Importamos el módulo de correo
 from utils.config import app
 import os
 
@@ -17,15 +18,8 @@ def get_db():
 
 # --- FUNCIÓN AUXILIAR: ASIGNACIÓN INTELIGENTE DE SECCIÓN ---
 def obtener_seccion_disponible(cursor, curso_id, periodo_id):
-    """
-    Busca la primera sección (1=A, 2=B...) que tenga menos de 30 estudiantes
-    inscritos en el periodo actual.
-    """
     CAPACIDAD_MAXIMA = 30
-    
-    # Probamos secciones de la 1 (A) a la 20 (T)
     for seccion_num in range(1, 21):
-        # Contamos cuántos estudiantes hay en esta sección, curso y periodo
         query = """
             SELECT COUNT(*) 
             FROM "CursoEstudiante" 
@@ -35,13 +29,9 @@ def obtener_seccion_disponible(cursor, curso_id, periodo_id):
         """
         cursor.execute(query, (curso_id, seccion_num, periodo_id))
         cantidad = cursor.fetchone()[0]
-        
-        # Si hay espacio (menos de 30), retornamos esta sección
         if cantidad < CAPACIDAD_MAXIMA:
-            print(f"Asignando Sección {number_to_letter(seccion_num)} ({cantidad}/{CAPACIDAD_MAXIMA} ocupados)")
             return seccion_num
-            
-    return 1 # Fallback: Si todo está lleno, asigna a la A (o podrías lanzar error)
+    return 1
 
 # --- 1. VERIFICAR PERIODO ---
 @student_bp.route("/students/check_period", methods=["GET"])
@@ -59,7 +49,7 @@ def check_period():
     finally:
         cursor.close()
 
-# --- 2. CREAR ESTUDIANTE (LOGICA MEJORADA) ---
+# --- 2. CREAR ESTUDIANTE ---
 @student_bp.route("/students/create", methods=["POST"])
 def create():
     conn, cursor = get_db()
@@ -86,40 +76,32 @@ def create():
         
         # --- ASIGNACIÓN DE SECCIÓN INTELIGENTE ---
         val_curso_id = str(data["IdCurso"]).strip()
-        
-        # A. Buscamos el periodo activo
         cursor.execute('SELECT "PeriodoEscolarId" FROM "PeriodoInscripcion" WHERE "Activo" = TRUE LIMIT 1;')
         periodo_row = cursor.fetchone()
         
         if not periodo_row:
-            # Si no hay periodo activo, no podemos asignar sección correctamente
             raise Exception("No hay un periodo escolar activo para inscribir.")
         
         periodo_id = periodo_row[0]
-
-        # B. Calculamos la sección disponible (A, B, C...) usando la función auxiliar
         seccion_asignada = obtener_seccion_disponible(cursor, val_curso_id, periodo_id)
 
-        # C. Insertamos manualmente en CursoEstudiante con la sección calculada
         cursor.execute("""
             INSERT INTO "CursoEstudiante" ("EstudianteId", "CursoId", "Seccion", "PeriodoEscolarId")
             VALUES (%s, %s, %s, %s)
         """, (est_id, val_curso_id, seccion_asignada, periodo_id))
-        # -----------------------------------------
 
         # 4. Guardar Archivos
         if "FotoCarnet" in files:
             path = os.path.join(app.config["UPLOAD_FOLDER"], f"carnet-{est_id}.webp")
             resize(convert_to_webp(files["FotoCarnet"])).save(path)
             
-        docs_map = {"DocDni": "dni", "DocPartidaNacimiento": "partida", "DocNotasCertificadas": "notas"}
+        docs_map = {"DocDni": "dni", "DocCedula": "dni", "DocCI": "dni", "DocPartidaNacimiento": "partida", "DocNotasCertificadas": "notas"}
         for key, prefix in docs_map.items():
             if key in files:
                 path = os.path.join(app.config["UPLOAD_FOLDER"], f"{prefix}-{est_id}.pdf")
                 files[key].save(path)
 
         conn.commit()
-        # Mostramos en el mensaje la sección asignada para confirmar
         return jsonify({"message": f"Estudiante registrado con éxito en la sección {number_to_letter(seccion_asignada)}"}), 201
     except Exception as err:
         conn.rollback()
@@ -128,7 +110,7 @@ def create():
     finally:
         cursor.close()
 
-# --- 3. OBTENER ESTUDIANTE (Edición) ---
+# --- 3. OBTENER ESTUDIANTE ---
 @student_bp.route("/students/get/<string:id>", methods=["GET"])
 def get_student(id):
     conn, cursor = get_db()
@@ -156,20 +138,18 @@ def get_student(id):
     finally:
         cursor.close()
 
-# --- 4. FILTRAR SOLICITUDES (Admin) - CORREGIDO Y POTENCIADO ---
+# --- 4. FILTRAR SOLICITUDES ---
 @student_bp.route("/students/filter", methods=["POST"])
 def filter_students():
     conn, cursor = get_db()
     try:
         data = request.get_json() or {}
         
-        # Recuperamos los filtros del Frontend
         estado = data.get("Estado", "revision")
         busqueda = data.get("Busqueda", "").strip()
         curso_id = data.get("CursoId", "")
         seccion = data.get("Seccion", "")
 
-        # Consulta Base
         query = """
             SELECT e."EstudianteId", ee."Estado", dp."Nombre", dp."Apellido", dp."Cedula", 
                    c."Grado", ce."Seccion", e."FechaNacimiento",
@@ -187,19 +167,14 @@ def filter_students():
         """
         params = [estado]
 
-        # --- APLICACIÓN DINÁMICA DE FILTROS ---
-        
-        # 1. Filtro por Grado (Curso)
         if curso_id and curso_id != "undefined" and curso_id != "":
             query += ' AND ce."CursoId" = %s'
             params.append(curso_id)
 
-        # 2. Filtro por Sección
         if seccion and seccion != "undefined" and seccion != "":
             query += ' AND ce."Seccion" = %s'
             params.append(int(seccion))
 
-        # 3. Filtro por Búsqueda (Nombre, Apellido o Cédula del Estudiante)
         if busqueda:
             query += """ AND (
                 dp."Nombre" ILIKE %s OR 
@@ -209,7 +184,6 @@ def filter_students():
             search_term = f"%{busqueda}%"
             params.extend([search_term, search_term, search_term])
 
-        # Ejecutamos la consulta con todos los parámetros acumulados
         cursor.execute(query, tuple(params))
         rows = cursor.fetchall()
         
@@ -249,9 +223,7 @@ def filter_students():
 def approve_student(id):
     conn, cursor = get_db()
     try:
-        # Cambiamos estado a 'inscrito'
         cursor.execute('UPDATE "EstadoEstudiante" SET "Estado" = \'inscrito\' WHERE "EstudianteId" = %s', (id,))
-        # Activamos al estudiante
         cursor.execute('UPDATE "Estudiante" SET "Activo" = TRUE WHERE "EstudianteId" = %s', (id,))
         conn.commit()
         return jsonify({"message": "Estudiante aprobado exitosamente"}), 200
@@ -261,19 +233,79 @@ def approve_student(id):
     finally:
         cursor.close()
 
-# --- 6. RECHAZAR ESTUDIANTE ---
+# --- 6. RECHAZAR ESTUDIANTE (CORREGIDO PARA ENVIAR EMAIL) ---
 @student_bp.route("/students/reject/<string:id>", methods=["PUT"])
 def reject_student(id):
     conn, cursor = get_db()
     try:
-        # data = request.get_json() # Si quisieras guardar el motivo
+        # 1. Obtener los datos enviados desde el Frontend
+        data = request.get_json()
         
-        # Cambiamos estado a 'rechazado'
+        email = data.get("Email")
+        motivo = data.get("Motivo")
+        descripcion = data.get("Descripcion")
+
+        # 2. Actualizar la base de datos
         cursor.execute('UPDATE "EstadoEstudiante" SET "Estado" = \'rechazado\' WHERE "EstudianteId" = %s', (id,))
-        # Desactivamos temporalmente
         cursor.execute('UPDATE "Estudiante" SET "Activo" = FALSE WHERE "EstudianteId" = %s', (id,))
         conn.commit()
-        return jsonify({"message": "Solicitud rechazada"}), 200
+
+        # 3. Enviar el correo electrónico CON CONTROL DE ERRORES
+        status_email = "Correo no enviado"
+        
+        if email and "@" in email and "Sin Email" not in email:
+            subject = " Solicitud de Inscripción Rechazada - Liceo Nacional Don Rómulo Gallegos"
+            
+            # Mensaje en TEXTO PLANO (Agregado para solucionar el error de missing argument)
+            text_body = f"""
+            Solicitud de Inscripción Rechazada
+            
+            Estimado representante,
+            Le informamos que la solicitud de inscripción de su representado ha sido rechazada.
+            
+            Motivo: {motivo}
+            Detalles: {descripcion}
+            
+            Si considera que esto es un error o desea corregir la situación, por favor inicie sesión en el sistema para actualizar los documentos o acérquese a la institución.
+        
+            """
+
+            # Mensaje en HTML
+            html_body = f"""
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
+                <h2 style="color: #d32f2f; text-align: center;">Solicitud de Inscripción Rechazada</h2>
+                <p>Estimado representante,</p>
+                <p>Le informamos que la solicitud de inscripción de su representado ha sido procesada y, lamentablemente, ha sido <strong>rechazada</strong>.</p>
+                
+                <div style="background-color: #ffebee; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                    <p style="margin: 5px 0;"><strong>Motivo:</strong> {motivo}</p>
+                    <p style="margin: 5px 0;"><strong>Detalles:</strong> {descripcion}</p>
+                </div>
+
+                <p>Si considera que esto es un error o desea corregir la situación, por favor inicie sesión en el sistema para actualizar los documentos o acérquese a la institución.</p>
+                
+                <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+                <p style="font-size: 12px; color: #777; text-align: center;">Liceo Nacional "Don Rómulo Gallegos" - Sistema de Gestión</p>
+            </div>
+            """
+            
+            try:
+                print(f"Intentando enviar correo a: {email}") # LOG
+                # SE PASAN 4 ARGUMENTOS: email, subject, text_body, html_body
+                send_email(email, subject, text_body, html_body)
+                status_email = "Notificación enviada por correo"
+                print(f"Correo enviado EXITOSAMENTE a {email}") # LOG
+            except Exception as e:
+                # AQUÍ CAPTURAMOS EL ERROR REAL Y LO MOSTRAMOS EN LA RESPUESTA
+                print(f"ERROR CRÍTICO AL ENVIAR CORREO: {e}") # LOG
+                status_email = f"Error enviando correo: {str(e)}"
+        else:
+            print(f"No se intentó enviar correo. Email inválido: {email}")
+            status_email = "No se envió correo (dirección inválida)"
+
+        # Devolvemos el estado del correo en el mensaje
+        return jsonify({"message": f"Solicitud rechazada. {status_email}"}), 200
+        
     except Exception as err:
         conn.rollback()
         return jsonify({"message": str(err)}), 500
@@ -366,15 +398,12 @@ def change_status(id):
         data = request.get_json()
         new_status = data.get("Estado")
         
-        # Validar el estado
         valid_statuses = ["inscrito", "retirado", "graduado", "revision", "rechazado"]
         if new_status not in valid_statuses:
              return jsonify({"message": "Estado no válido"}), 400
 
-        # Actualizar tabla EstadoEstudiante
         cursor.execute('UPDATE "EstadoEstudiante" SET "Estado" = %s WHERE "EstudianteId" = %s', (new_status, id))
         
-        # Actualizar Activo en tabla Estudiante
         is_active = True if new_status in ["inscrito", "revision"] else False
         cursor.execute('UPDATE "Estudiante" SET "Activo" = %s WHERE "EstudianteId" = %s', (is_active, id))
 
