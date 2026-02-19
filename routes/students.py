@@ -16,6 +16,28 @@ def get_db():
     cursor = conn.cursor()
     return conn, cursor
 
+# --- FUNCIÓN AUXILIAR: VALIDACIÓN ESTRICTA DE CÉDULA DE ESTUDIANTE ---
+def validar_cedula_estudiante(cedula_str):
+    cedula_limpia = str(cedula_str).replace("-", "").strip().upper()
+    # Si tiene 9 caracteres o menos, asumimos que es Cédula Regular (no escolar)
+    if len(cedula_limpia) <= 9:
+        is_extranjero = cedula_limpia.startswith("E")
+        
+        # Extraemos solo los números omitiendo el prefijo V o E
+        solo_numeros = ''.join(filter(str.isdigit, cedula_limpia))
+        
+        if solo_numeros:
+            num = int(solo_numeros)
+            
+            if num < 33000000:
+                raise Exception("El número de Cédula de Identidad del estudiante debe ser mayor a 33.000.000")
+            
+            if not is_extranjero and num > 40000000:
+                raise Exception("El número de Cédula de Identidad para Venezolanos (V) no debe exceder los 40.000.000")
+                
+            if is_extranjero and num > 90000000:
+                raise Exception("El número de Cédula de Identidad para Extranjeros (E) no debe exceder los 90.000.000")
+
 # --- FUNCIÓN AUXILIAR: ASIGNACIÓN INTELIGENTE DE SECCIÓN ---
 def obtener_seccion_disponible(cursor, curso_id, periodo_id):
     CAPACIDAD_MAXIMA = 30
@@ -58,6 +80,10 @@ def create():
             return jsonify({"message": "No autorizado"}), 401
 
         data, files = request.form, request.files
+
+        # NUEVA VALIDACIÓN: Verifica rango solo si es cédula regular
+        if "Cedula" in data:
+            validar_cedula_estudiante(data["Cedula"])
 
         # 1. Crear Datos Persona
         cursor.execute("""INSERT INTO "DatosPersona" ("Nombre", "Apellido", "Sexo", "Cedula", "Direccion") 
@@ -256,7 +282,7 @@ def reject_student(id):
         if email and "@" in email and "Sin Email" not in email:
             subject = " Solicitud de Inscripción Rechazada - Liceo Nacional Don Rómulo Gallegos"
             
-            # Mensaje en TEXTO PLANO (Agregado para solucionar el error de missing argument)
+            # Mensaje en TEXTO PLANO
             text_body = f"""
             Solicitud de Inscripción Rechazada
             
@@ -267,7 +293,6 @@ def reject_student(id):
             Detalles: {descripcion}
             
             Si considera que esto es un error o desea corregir la situación, por favor inicie sesión en el sistema para actualizar los documentos o acérquese a la institución.
-        
             """
 
             # Mensaje en HTML
@@ -291,12 +316,10 @@ def reject_student(id):
             
             try:
                 print(f"Intentando enviar correo a: {email}") # LOG
-                # SE PASAN 4 ARGUMENTOS: email, subject, text_body, html_body
                 send_email(email, subject, text_body, html_body)
                 status_email = "Notificación enviada por correo"
                 print(f"Correo enviado EXITOSAMENTE a {email}") # LOG
             except Exception as e:
-                # AQUÍ CAPTURAMOS EL ERROR REAL Y LO MOSTRAMOS EN LA RESPUESTA
                 print(f"ERROR CRÍTICO AL ENVIAR CORREO: {e}") # LOG
                 status_email = f"Error enviando correo: {str(e)}"
         else:
@@ -318,6 +341,11 @@ def correct_application(id):
     conn, cursor = get_db()
     try:
         data = request.form
+        
+        # NUEVA VALIDACIÓN: Verifica rango solo si es cédula regular
+        if "Cedula" in data:
+            validar_cedula_estudiante(data["Cedula"])
+            
         cursor.execute('SELECT "DatosPersonaId" FROM "Estudiante" WHERE "EstudianteId" = %s', (id,))
         row = cursor.fetchone()
         if not row: raise Exception("Estudiante no encontrado")
