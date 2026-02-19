@@ -8,6 +8,7 @@ from utils.helpers import number_to_letter
 from utils.email import send_email  # <--- IMPORTANTE: Importamos el módulo de correo
 from utils.config import app
 import os
+from datetime import datetime # <--- IMPORTANTE: Importado para validar fechas
 
 student_bp = Blueprint("student", __name__)
 
@@ -37,6 +38,16 @@ def validar_cedula_estudiante(cedula_str):
                 
             if is_extranjero and num > 90000000:
                 raise Exception("El número de Cédula de Identidad para Extranjeros (E) no debe exceder los 90.000.000")
+
+# --- FUNCIÓN AUXILIAR: VALIDACIÓN DE FECHA DE NACIMIENTO ---
+def validar_fecha_nacimiento(fecha_str):
+    try:
+        # El frontend envía la fecha en formato DD/MM/YYYY
+        fecha = datetime.strptime(fecha_str, "%d/%m/%Y")
+        if fecha.year < 2008 or fecha.year > 2015:
+            raise Exception("El año de nacimiento del estudiante debe estar estrictamente entre 2008 y 2015.")
+    except ValueError:
+        raise Exception("Formato de fecha de nacimiento inválido.")
 
 # --- FUNCIÓN AUXILIAR: ASIGNACIÓN INTELIGENTE DE SECCIÓN ---
 def obtener_seccion_disponible(cursor, curso_id, periodo_id):
@@ -81,9 +92,15 @@ def create():
 
         data, files = request.form, request.files
 
-        # NUEVA VALIDACIÓN: Verifica rango solo si es cédula regular
+        # VALIDACIÓN: Verifica rango de Cédula
         if "Cedula" in data:
             validar_cedula_estudiante(data["Cedula"])
+
+        # NUEVA VALIDACIÓN: Verifica rango de Fecha de Nacimiento (2008 - 2015)
+        if "FechaNacimiento" in data:
+            validar_fecha_nacimiento(data["FechaNacimiento"])
+        else:
+            raise Exception("La fecha de nacimiento es requerida.")
 
         # 1. Crear Datos Persona
         cursor.execute("""INSERT INTO "DatosPersona" ("Nombre", "Apellido", "Sexo", "Cedula", "Direccion") 
@@ -259,7 +276,7 @@ def approve_student(id):
     finally:
         cursor.close()
 
-# --- 6. RECHAZAR ESTUDIANTE (CORREGIDO PARA ENVIAR EMAIL) ---
+# --- 6. RECHAZAR ESTUDIANTE ---
 @student_bp.route("/students/reject/<string:id>", methods=["PUT"])
 def reject_student(id):
     conn, cursor = get_db()
@@ -342,7 +359,6 @@ def correct_application(id):
     try:
         data = request.form
         
-        # NUEVA VALIDACIÓN: Verifica rango solo si es cédula regular
         if "Cedula" in data:
             validar_cedula_estudiante(data["Cedula"])
             
