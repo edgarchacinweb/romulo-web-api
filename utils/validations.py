@@ -56,7 +56,8 @@ class Validations():
 
     @classmethod
     def is_phone(self, phone: str):
-        return bool(re.match(pattern=r"^(0412|0414|0416|0424|0426)-\d{7}$", string=phone))
+        # --- CAMBIO AQUÍ: Se agregó el 0422 a la lista de prefijos permitidos ---
+        return bool(re.match(pattern=r"^(0412|0414|0416|0422|0424|0426)-\d{7}$", string=phone))
     
     @classmethod
     def is_gender(self, gender: str):
