@@ -5,10 +5,10 @@ from utils.image import resize, convert_to_webp
 from models.Usuario import Rol
 from utils.handler import exception_handler
 from utils.helpers import number_to_letter
-from utils.email import send_email  # <--- IMPORTANTE: Importamos el módulo de correo
+from utils.email import send_email
 from utils.config import app
 import os
-from datetime import datetime # <--- IMPORTANTE: Importado para validar fechas
+from datetime import datetime
 
 student_bp = Blueprint("student", __name__)
 
@@ -138,7 +138,16 @@ def create():
             path = os.path.join(app.config["UPLOAD_FOLDER"], f"carnet-{est_id}.webp")
             resize(convert_to_webp(files["FotoCarnet"])).save(path)
             
-        docs_map = {"DocDni": "dni", "DocCedula": "dni", "DocCI": "dni", "DocPartidaNacimiento": "partida", "DocNotasCertificadas": "notas"}
+        # MAPEO ACTUALIZADO PARA INCLUIR AUTORIZACIÓN
+        docs_map = {
+            "DocDni": "dni", 
+            "DocCedula": "dni", 
+            "DocCI": "dni", 
+            "DocPartidaNacimiento": "partida", 
+            "DocNotasCertificadas": "notas",
+            "DocAutorizacion": "autorizacion"
+        }
+        
         for key, prefix in docs_map.items():
             if key in files:
                 path = os.path.join(app.config["UPLOAD_FOLDER"], f"{prefix}-{est_id}.pdf")
