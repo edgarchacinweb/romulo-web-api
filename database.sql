@@ -64,7 +64,7 @@ CREATE TABLE "Asistencia" (
 CREATE TABLE "Materia" (
 "MateriaId" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
 "Nivel" NIVEL NOT NULL,
-"Nombre" VARCHAR(50) NOT NULL UNIQUE,
+"Nombre" VARCHAR(50) NOT NULL,
 "Activo" BOOLEAN DEFAULT TRUE,
 "FechaCreacion" TIMESTAMP DEFAULT clock_timestamp()
 );
@@ -86,7 +86,6 @@ CREATE TABLE "Horario" (
 "CursoId" UUID NOT NULL,
 "PeriodoEscolarId" UUID NOT NULL,
 "Seccion" INTEGER NOT NULL,
-"Receso" BOOLEAN NOT NULL DEFAULT FALSE,
 "FechaCreacion" TIMESTAMP DEFAULT clock_timestamp()
 );
 
