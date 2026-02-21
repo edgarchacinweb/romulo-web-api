@@ -8,6 +8,7 @@ from utils.helpers import number_to_letter
 from utils.email import send_email
 from utils.config import app
 import os
+import re
 from datetime import datetime
 
 student_bp = Blueprint("student", __name__)
@@ -17,32 +18,28 @@ def get_db():
     cursor = conn.cursor()
     return conn, cursor
 
+# --- FUNCIÓN AUXILIAR: VALIDACIÓN DE SOLO LETRAS ---
+def validar_solo_letras(texto, campo):
+    if not texto or not texto.strip():
+        raise Exception(f"El campo {campo} es requerido.")
+    if not re.match(r"^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+$", texto.strip()):
+        raise Exception(f"El campo {campo} solo debe contener letras.")
+
 # --- FUNCIÓN AUXILIAR: VALIDACIÓN ESTRICTA DE CÉDULA DE ESTUDIANTE ---
 def validar_cedula_estudiante(cedula_str):
     cedula_limpia = str(cedula_str).replace("-", "").strip().upper()
-    # Si tiene 9 caracteres o menos, asumimos que es Cédula Regular (no escolar)
     if len(cedula_limpia) <= 9:
         is_extranjero = cedula_limpia.startswith("E")
-        
-        # Extraemos solo los números omitiendo el prefijo V o E
         solo_numeros = ''.join(filter(str.isdigit, cedula_limpia))
-        
         if solo_numeros:
             num = int(solo_numeros)
-            
-            if num < 33000000:
-                raise Exception("El número de Cédula de Identidad del estudiante debe ser mayor a 33.000.000")
-            
-            if not is_extranjero and num > 40000000:
-                raise Exception("El número de Cédula de Identidad para Venezolanos (V) no debe exceder los 40.000.000")
-                
-            if is_extranjero and num > 90000000:
-                raise Exception("El número de Cédula de Identidad para Extranjeros (E) no debe exceder los 90.000.000")
+            if num < 33000000: raise Exception("El número de Cédula de Identidad del estudiante debe ser mayor a 33.000.000")
+            if not is_extranjero and num > 40000000: raise Exception("El número de Cédula de Identidad para Venezolanos (V) no debe exceder los 40.000.000")
+            if is_extranjero and num > 90000000: raise Exception("El número de Cédula de Identidad para Extranjeros (E) no debe exceder los 90.000.000")
 
 # --- FUNCIÓN AUXILIAR: VALIDACIÓN DE FECHA DE NACIMIENTO ---
 def validar_fecha_nacimiento(fecha_str):
     try:
-        # El frontend envía la fecha en formato DD/MM/YYYY
         fecha = datetime.strptime(fecha_str, "%d/%m/%Y")
         if fecha.year < 2008 or fecha.year > 2015:
             raise Exception("El año de nacimiento del estudiante debe estar estrictamente entre 2008 y 2015.")
@@ -91,40 +88,32 @@ def create():
             return jsonify({"message": "No autorizado"}), 401
 
         data, files = request.form, request.files
+        
+        if "Nombre" in data: validar_solo_letras(data["Nombre"], "Nombre")
+        if "Apellido" in data: validar_solo_letras(data["Apellido"], "Apellido")
+        if "Cedula" in data: validar_cedula_estudiante(data["Cedula"])
 
-        # VALIDACIÓN: Verifica rango de Cédula
-        if "Cedula" in data:
-            validar_cedula_estudiante(data["Cedula"])
-
-        # NUEVA VALIDACIÓN: Verifica rango de Fecha de Nacimiento (2008 - 2015)
         if "FechaNacimiento" in data:
             validar_fecha_nacimiento(data["FechaNacimiento"])
         else:
             raise Exception("La fecha de nacimiento es requerida.")
 
-        # 1. Crear Datos Persona
         cursor.execute("""INSERT INTO "DatosPersona" ("Nombre", "Apellido", "Sexo", "Cedula", "Direccion") 
                            VALUES (%s,%s,%s,%s,%s) RETURNING "DatosPersonaId";""",
-                        (data["Nombre"], data["Apellido"], data["Genero"], data["Cedula"], data["Direccion"]))
+                        (data["Nombre"].strip(), data["Apellido"].strip(), data["Genero"], data["Cedula"], data["Direccion"]))
         dp_id = cursor.fetchone()[0]
 
-        # 2. Crear Estudiante
         cursor.execute("""INSERT INTO "Estudiante" ("FechaNacimiento", "Parentesco", "DatosPersonaId", "RepresentanteId") 
                            VALUES (%s,%s,%s,%s) RETURNING "EstudianteId";""",
                         (data["FechaNacimiento"], data["Parentesco"], dp_id, data["IdRepresentante"]))
         est_id = cursor.fetchone()[0]
 
-        # 3. Estado Inicial
         cursor.execute('INSERT INTO "EstadoEstudiante" ("EstudianteId", "Estado") VALUES (%s, \'revision\')', (est_id,))
         
-        # --- ASIGNACIÓN DE SECCIÓN INTELIGENTE ---
         val_curso_id = str(data["IdCurso"]).strip()
         cursor.execute('SELECT "PeriodoEscolarId" FROM "PeriodoInscripcion" WHERE "Activo" = TRUE LIMIT 1;')
         periodo_row = cursor.fetchone()
-        
-        if not periodo_row:
-            raise Exception("No hay un periodo escolar activo para inscribir.")
-        
+        if not periodo_row: raise Exception("No hay un periodo escolar activo para inscribir.")
         periodo_id = periodo_row[0]
         seccion_asignada = obtener_seccion_disponible(cursor, val_curso_id, periodo_id)
 
@@ -133,19 +122,13 @@ def create():
             VALUES (%s, %s, %s, %s)
         """, (est_id, val_curso_id, seccion_asignada, periodo_id))
 
-        # 4. Guardar Archivos
         if "FotoCarnet" in files:
             path = os.path.join(app.config["UPLOAD_FOLDER"], f"carnet-{est_id}.webp")
             resize(convert_to_webp(files["FotoCarnet"])).save(path)
             
-        # MAPEO ACTUALIZADO PARA INCLUIR AUTORIZACIÓN
         docs_map = {
-            "DocDni": "dni", 
-            "DocCedula": "dni", 
-            "DocCI": "dni", 
-            "DocPartidaNacimiento": "partida", 
-            "DocNotasCertificadas": "notas",
-            "DocAutorizacion": "autorizacion"
+            "DocDni": "dni", "DocCedula": "dni", "DocCI": "dni", 
+            "DocPartidaNacimiento": "partida", "DocNotasCertificadas": "notas", "DocAutorizacion": "autorizacion"
         }
         
         for key, prefix in docs_map.items():
@@ -157,7 +140,6 @@ def create():
         return jsonify({"message": f"Estudiante registrado con éxito en la sección {number_to_letter(seccion_asignada)}"}), 201
     except Exception as err:
         conn.rollback()
-        print(f"Error create: {err}")
         return jsonify({"message": str(err)}), 500
     finally:
         cursor.close()
@@ -167,13 +149,17 @@ def create():
 def get_student(id):
     conn, cursor = get_db()
     try:
+        # AQUÍ ESTÁ EL CAMBIO: Se agregó c."Grado" al SELECT para poder sumarle un año en el frontend
         query = """
             SELECT dp."Nombre", dp."Apellido", dp."Sexo", dp."Cedula", dp."Direccion", 
-                   e."FechaNacimiento", e."Parentesco", ce."CursoId"
+                   e."FechaNacimiento", e."Parentesco", ce."CursoId", c."Grado"
             FROM "Estudiante" e
             JOIN "DatosPersona" dp ON e."DatosPersonaId" = dp."DatosPersonaId"
             LEFT JOIN "CursoEstudiante" ce ON e."EstudianteId" = ce."EstudianteId"
+            LEFT JOIN "Curso" c ON ce."CursoId" = c."CursoId"
             WHERE e."EstudianteId" = %s
+            ORDER BY c."Grado" DESC NULLS LAST
+            LIMIT 1
         """
         cursor.execute(query, (id,))
         row = cursor.fetchone()
@@ -182,7 +168,7 @@ def get_student(id):
         return jsonify({
             "Nombre": row[0], "Apellido": row[1], "Genero": row[2], 
             "Cedula": row[3], "Direccion": row[4], "FechaNacimiento": str(row[5]), 
-            "Parentesco": row[6], "IdCurso": row[7]
+            "Parentesco": row[6], "IdCurso": row[7], "Grado": row[8]
         }), 200
     except Exception as err:
         conn.rollback()
@@ -203,7 +189,8 @@ def filter_students():
         seccion = data.get("Seccion", "")
 
         query = """
-            SELECT e."EstudianteId", ee."Estado", dp."Nombre", dp."Apellido", dp."Cedula", 
+            SELECT DISTINCT ON (e."EstudianteId") 
+                   e."EstudianteId", ee."Estado", dp."Nombre", dp."Apellido", dp."Cedula", 
                    c."Grado", ce."Seccion", e."FechaNacimiento",
                    rep."Nombre", rep."Apellido", u."UsuarioId", u."Email",
                    dp."Sexo", dp."Direccion",
@@ -236,36 +223,23 @@ def filter_students():
             search_term = f"%{busqueda}%"
             params.extend([search_term, search_term, search_term])
 
+        query += ' ORDER BY e."EstudianteId", c."Grado" DESC'
+
         cursor.execute(query, tuple(params))
         rows = cursor.fetchall()
         
         return jsonify([{
-            "EstudianteId": r[0],
-            "Estado": r[1],
-            "FechaNacimiento": str(r[7]),
-            "Parentesco": r[14],
-            "DatosPersona": {
-                "Nombre": r[2], "Apellido": r[3], "Cedula": r[4],
-                "Sexo": r[12],      
-                "Direccion": r[13]
-            },
-            "Curso": {
-                "Grado": r[5], "Seccion": number_to_letter(r[6])
-            },
+            "EstudianteId": r[0], "Estado": r[1], "FechaNacimiento": str(r[7]), "Parentesco": r[14],
+            "DatosPersona": { "Nombre": r[2], "Apellido": r[3], "Cedula": r[4], "Sexo": r[12], "Direccion": r[13] },
+            "Curso": { "Grado": r[5], "Seccion": number_to_letter(r[6]) },
             "Representante": {
-                "Nombre": r[8], 
-                "Apellido": r[9],
-                "UsuarioId": r[10] if r[10] else "Sin Usuario", 
-                "Email": r[11] if r[11] else "Sin Email",
-                "Cedula": r[15],
-                "Telefono": r[16],
-                "Ocupacion": r[17],
-                "Direccion": r[18]
+                "Nombre": r[8], "Apellido": r[9], "UsuarioId": r[10] if r[10] else "Sin Usuario", 
+                "Email": r[11] if r[11] else "Sin Email", "Cedula": r[15], "Telefono": r[16],
+                "Ocupacion": r[17], "Direccion": r[18]
             }
         } for r in rows]), 200
     except Exception as err:
         conn.rollback()
-        print(f"Error filter: {err}")
         return jsonify({"message": str(err)}), 500
     finally:
         cursor.close()
@@ -290,71 +264,25 @@ def approve_student(id):
 def reject_student(id):
     conn, cursor = get_db()
     try:
-        # 1. Obtener los datos enviados desde el Frontend
         data = request.get_json()
-        
-        email = data.get("Email")
-        motivo = data.get("Motivo")
-        descripcion = data.get("Descripcion")
+        email, motivo, descripcion = data.get("Email"), data.get("Motivo"), data.get("Descripcion")
 
-        # 2. Actualizar la base de datos
         cursor.execute('UPDATE "EstadoEstudiante" SET "Estado" = \'rechazado\' WHERE "EstudianteId" = %s', (id,))
         cursor.execute('UPDATE "Estudiante" SET "Activo" = FALSE WHERE "EstudianteId" = %s', (id,))
         conn.commit()
 
-        # 3. Enviar el correo electrónico CON CONTROL DE ERRORES
         status_email = "Correo no enviado"
-        
         if email and "@" in email and "Sin Email" not in email:
             subject = " Solicitud de Inscripción Rechazada - Liceo Nacional Don Rómulo Gallegos"
-            
-            # Mensaje en TEXTO PLANO
-            text_body = f"""
-            Solicitud de Inscripción Rechazada
-            
-            Estimado representante,
-            Le informamos que la solicitud de inscripción de su representado ha sido rechazada.
-            
-            Motivo: {motivo}
-            Detalles: {descripcion}
-            
-            Si considera que esto es un error o desea corregir la situación, por favor inicie sesión en el sistema para actualizar los documentos o acérquese a la institución.
-            """
-
-            # Mensaje en HTML
-            html_body = f"""
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
-                <h2 style="color: #d32f2f; text-align: center;">Solicitud de Inscripción Rechazada</h2>
-                <p>Estimado representante,</p>
-                <p>Le informamos que la solicitud de inscripción de su representado ha sido procesada y, lamentablemente, ha sido <strong>rechazada</strong>.</p>
-                
-                <div style="background-color: #ffebee; padding: 15px; border-radius: 5px; margin: 20px 0;">
-                    <p style="margin: 5px 0;"><strong>Motivo:</strong> {motivo}</p>
-                    <p style="margin: 5px 0;"><strong>Detalles:</strong> {descripcion}</p>
-                </div>
-
-                <p>Si considera que esto es un error o desea corregir la situación, por favor inicie sesión en el sistema para actualizar los documentos o acérquese a la institución.</p>
-                
-                <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
-                <p style="font-size: 12px; color: #777; text-align: center;">Liceo Nacional "Don Rómulo Gallegos" - Sistema de Gestión</p>
-            </div>
-            """
-            
+            text_body = f"Motivo: {motivo}\nDetalles: {descripcion}"
+            html_body = f"<p>Motivo: {motivo}</p><p>Detalles: {descripcion}</p>"
             try:
-                print(f"Intentando enviar correo a: {email}") # LOG
                 send_email(email, subject, text_body, html_body)
                 status_email = "Notificación enviada por correo"
-                print(f"Correo enviado EXITOSAMENTE a {email}") # LOG
             except Exception as e:
-                print(f"ERROR CRÍTICO AL ENVIAR CORREO: {e}") # LOG
                 status_email = f"Error enviando correo: {str(e)}"
-        else:
-            print(f"No se intentó enviar correo. Email inválido: {email}")
-            status_email = "No se envió correo (dirección inválida)"
 
-        # Devolvemos el estado del correo en el mensaje
         return jsonify({"message": f"Solicitud rechazada. {status_email}"}), 200
-        
     except Exception as err:
         conn.rollback()
         return jsonify({"message": str(err)}), 500
@@ -368,8 +296,9 @@ def correct_application(id):
     try:
         data = request.form
         
-        if "Cedula" in data:
-            validar_cedula_estudiante(data["Cedula"])
+        if "Nombre" in data: validar_solo_letras(data["Nombre"], "Nombre")
+        if "Apellido" in data: validar_solo_letras(data["Apellido"], "Apellido")
+        if "Cedula" in data: validar_cedula_estudiante(data["Cedula"])
             
         cursor.execute('SELECT "DatosPersonaId" FROM "Estudiante" WHERE "EstudianteId" = %s', (id,))
         row = cursor.fetchone()
@@ -377,12 +306,77 @@ def correct_application(id):
         
         dp_id = row[0]
         cursor.execute('UPDATE "DatosPersona" SET "Nombre"=%s, "Apellido"=%s, "Cedula"=%s, "Direccion"=%s WHERE "DatosPersonaId"=%s',
-                       (data["Nombre"], data["Apellido"], data["Cedula"], data["Direccion"], dp_id))
+                       (data["Nombre"].strip(), data["Apellido"].strip(), data["Cedula"], data["Direccion"], dp_id))
         
         cursor.execute('UPDATE "EstadoEstudiante" SET "Estado" = \'revision\' WHERE "EstudianteId" = %s', (id,))
         
         conn.commit()
         return jsonify({"message": "Solicitud enviada a revisión"}), 200
+    except Exception as err:
+        conn.rollback()
+        return jsonify({"message": str(err)}), 500
+    finally:
+        cursor.close()
+
+# --- NUEVO: 7.1 ENVIAR REINSCRIPCIÓN ---
+@student_bp.route("/students/submit_reinscription/<string:id>", methods=["PUT"])
+def submit_reinscription(id):
+    conn, cursor = get_db()
+    try:
+        data, files = request.form, request.files
+
+        # Validaciones de Seguridad
+        if "Nombre" in data: validar_solo_letras(data["Nombre"], "Nombre")
+        if "Apellido" in data: validar_solo_letras(data["Apellido"], "Apellido")
+        if "Cedula" in data: validar_cedula_estudiante(data["Cedula"])
+        if "FechaNacimiento" in data: validar_fecha_nacimiento(data["FechaNacimiento"])
+
+        # 1. Actualizar DatosPersona (Por si el representante corrigió el nombre o dirección)
+        cursor.execute('SELECT "DatosPersonaId" FROM "Estudiante" WHERE "EstudianteId" = %s', (id,))
+        row = cursor.fetchone()
+        if not row: raise Exception("Estudiante no encontrado")
+        dp_id = row[0]
+        
+        cursor.execute('UPDATE "DatosPersona" SET "Nombre"=%s, "Apellido"=%s, "Cedula"=%s, "Direccion"=%s WHERE "DatosPersonaId"=%s',
+                       (data["Nombre"].strip(), data["Apellido"].strip(), data["Cedula"], data["Direccion"], dp_id))
+        
+        # 2. Devolver Estado a Revisión
+        cursor.execute('UPDATE "EstadoEstudiante" SET "Estado" = \'revision\' WHERE "EstudianteId" = %s', (id,))
+
+        # 3. Asignación del nuevo Curso / Año escolar activo
+        val_curso_id = str(data["IdCurso"]).strip()
+        cursor.execute('SELECT "PeriodoEscolarId" FROM "PeriodoInscripcion" WHERE "Activo" = TRUE LIMIT 1;')
+        periodo_row = cursor.fetchone()
+        if not periodo_row: raise Exception("No hay un periodo de inscripción activo para reinscribir.")
+        periodo_id = periodo_row[0]
+
+        # Validar que no se generen registros duplicados si fue rechazado e intenta otra vez la reinscripción en el mismo periodo
+        cursor.execute('SELECT * FROM "CursoEstudiante" WHERE "EstudianteId" = %s AND "PeriodoEscolarId" = %s', (id, periodo_id))
+        if cursor.fetchone():
+            cursor.execute('UPDATE "CursoEstudiante" SET "CursoId" = %s WHERE "EstudianteId" = %s AND "PeriodoEscolarId" = %s', (val_curso_id, id, periodo_id))
+        else:
+            seccion_asignada = obtener_seccion_disponible(cursor, val_curso_id, periodo_id)
+            cursor.execute("""
+                INSERT INTO "CursoEstudiante" ("EstudianteId", "CursoId", "Seccion", "PeriodoEscolarId")
+                VALUES (%s, %s, %s, %s)
+            """, (id, val_curso_id, seccion_asignada, periodo_id))
+
+        # 4. Procesar SOLO los archivos nuevos (Si suben algo nuevo se sobreescribe, si no, se conservan los anteriores)
+        if "FotoCarnet" in files:
+            path = os.path.join(app.config["UPLOAD_FOLDER"], f"carnet-{id}.webp")
+            resize(convert_to_webp(files["FotoCarnet"])).save(path)
+            
+        docs_map = {
+            "DocDni": "dni", "DocPartidaNacimiento": "partida", 
+            "DocNotasCertificadas": "notas", "DocAutorizacion": "autorizacion"
+        }
+        for key, prefix in docs_map.items():
+            if key in files:
+                path = os.path.join(app.config["UPLOAD_FOLDER"], f"{prefix}-{id}.pdf")
+                files[key].save(path)
+
+        conn.commit()
+        return jsonify({"message": "Solicitud de reinscripción enviada a revisión con éxito."}), 200
     except Exception as err:
         conn.rollback()
         return jsonify({"message": str(err)}), 500
@@ -397,7 +391,7 @@ def get_all_by_parent(parent_id):
         query = """
             SELECT DISTINCT ON (e."EstudianteId") 
                    e."EstudianteId", e."FechaNacimiento", c."Grado", ce."Seccion", 
-                   dp."Nombre", dp."Apellido", dp."Sexo", dp."Cedula", ee."Estado"
+                   dp."Nombre", dp."Apellido", dp."Sexo", dp."Cedula", ee."Estado", ce."PeriodoEscolarId"
             FROM "Estudiante" e 
             JOIN "CursoEstudiante" ce ON ce."EstudianteId"=e."EstudianteId" 
             JOIN "Curso" c ON c."CursoId"=ce."CursoId" 
@@ -413,12 +407,9 @@ def get_all_by_parent(parent_id):
             {
                 "EstudianteId": r[0], 
                 "FechaNacimiento": str(r[1]),
-                "Curso": {"Grado": r[2], "Seccion": number_to_letter(r[3])}, 
+                "Curso": {"Grado": r[2], "Seccion": number_to_letter(r[3]), "PeriodoEscolarId": r[9]}, 
                 "DatosPersona": {
-                    "Nombre": r[4], 
-                    "Apellido": r[5], 
-                    "Sexo": r[6],
-                    "Cedula": r[7]
+                    "Nombre": r[4], "Apellido": r[5], "Sexo": r[6], "Cedula": r[7]
                 }, 
                 "EstadoEstudiante": {"Estado": r[8]}
             } for r in rows
