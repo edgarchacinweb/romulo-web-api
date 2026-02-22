@@ -60,7 +60,7 @@ def filter():
         cursor.close()
 
 @schedule_bp.route("/schedule/list/<string:periodo_escolar_id>", methods=["GET"])
-def list(periodo_escolar_id = ""):
+def list_schedule(periodo_escolar_id = ""):
     conn = Connection().get_connection()
     cursor = conn.cursor()
     try:
@@ -115,6 +115,74 @@ def blocks():
     "HoraFin": bh[2].strftime("%H:%M") if bh[2] else None
 } for bh in rows]), 200
     except Exception as err:
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
+
+@schedule_bp.route("/schedule/create", methods=["POST"])
+def create():
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+
+    try:
+        payload = Security.verify_token(request.headers)
+        if payload is None:
+            raise Unauthorized()
+
+        data = request.get_json()
+
+        if not isinstance(data, list):
+            raise ValidationError("Los datos deben ser una lista")
+
+        # Seleccionando el período escolar actual
+        cursor.execute("SELECT \"PeriodoEscolarId\" FROM \"PeriodoEscolar\" WHERE \"Activo\"=true ORDER BY \"FechaInicio\" DESC LIMIT 1;")
+        row = cursor.fetchone()
+        if row is None:
+            raise InvalidId("No se encontró ningún período escolar activo")
+
+        periodo_escolar_id = row[0]
+
+        for item in data:
+            if not Validations.is_uuid(item["CursoId"]):
+                raise InvalidId("El identificador del curso es inválido")
+            elif not Validations.is_uuid(item["BloqueHorarioId"]):
+                raise InvalidId("El identificador del bloque horario es inválido")
+            elif not Validations.is_uuid(item["DocenteId"]):
+                raise InvalidId("El identificador del docente es inválido")
+            elif not Validations.is_uuid(item["MateriaId"]):
+                raise InvalidId("El identificador de la materia es inválido")
+            elif not Validations.is_section(item["Seccion"]):
+                raise InvalidId("La sección es inválida")
+            elif not Validations.is_day(item["Dia"]):
+                raise InvalidId("El día es inválido")
+
+            # Buscar si existe un horario con el mismo curso, seccion, periodo escolar y dia
+            cursor.execute("""
+                SELECT * FROM "Horario"
+                WHERE "CursoId"=%s AND "Seccion"=%s AND "PeriodoEscolarId"=%s AND "Dia"=%s AND "BloqueHorarioId"=%s
+            """, (item["CursoId"], item["Seccion"], periodo_escolar_id, item["Dia"], item["BloqueHorarioId"]))
+            row = cursor.fetchone()
+            logger.info(row)
+
+            # Actualizar horario con nueva materia y docente
+            if row:
+                cursor.execute("""
+                    UPDATE "Horario"
+                    SET "MateriaId"=%s, "DocenteId"=%s
+                    WHERE "CursoId"=%s AND "Seccion"=%s AND "PeriodoEscolarId"=%s AND "Dia"=%s
+                """, (item["MateriaId"], item["DocenteId"], item["CursoId"], item["Seccion"], periodo_escolar_id, item["Dia"]))
+            else:
+                cursor.execute("""
+                    INSERT INTO "Horario" ("CursoId", "Seccion", "PeriodoEscolarId", "Dia", "BloqueHorarioId", "DocenteId", "MateriaId")
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (item["CursoId"], item["Seccion"], periodo_escolar_id, item["Dia"], item["BloqueHorarioId"], item["DocenteId"], item["MateriaId"]))
+            
+            conn.commit()
+
+        return Response(status=201)
+    except Exception as err:
+        conn.rollback()
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
     finally:

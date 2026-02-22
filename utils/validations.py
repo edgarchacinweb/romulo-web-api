@@ -18,6 +18,10 @@ class Validations():
     def is_password(self, password:str):
         pattern = r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[$@$!%*?&._-])[A-Za-z\d$@$!%*?&._-]{8,}$'
         return bool(re.match(pattern, password))
+
+    @classmethod
+    def is_day(self, day: str):
+        return day in ("Lunes", "Martes", "Miércoles", "Jueves", "Viernes")
     
     @classmethod
     def is_uuid(self, id: str):
