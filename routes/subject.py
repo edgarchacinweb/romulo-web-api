@@ -31,7 +31,8 @@ def list_subjects():
         return jsonify([{
             "MateriaId": s[0],
             "Nivel": s[1],
-            "Nombre": s[2]
+            "Nombre": s[2],
+            "Fecha": s[4].strftime("%m/%d/%Y")
         } for s in rows]), 200
     except Exception as err:
         conn.rollback()

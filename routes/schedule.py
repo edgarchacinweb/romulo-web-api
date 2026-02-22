@@ -51,8 +51,45 @@ def filter():
             "BloqueHorarioId": h[4],
             "CursoId": h[5],
             "PeriodoEscolarId": h[6],
+            "Seccion": h[7]
+        } for h in rows]), 200
+    except Exception as err:
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
+
+@schedule_bp.route("/schedule/list/<string:periodo_escolar_id>", methods=["GET"])
+def list(periodo_escolar_id = ""):
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+    try:
+        payload = Security.verify_token(request.headers)
+        if payload is None:
+            raise Unauthorized()
+
+        if not Validations.is_uuid(periodo_escolar_id):
+            raise InvalidId("El identificador del período escolar es inválido")
+
+        cursor.execute("""
+            SELECT * FROM "Horario" AS h
+            INNER JOIN "BloqueHorario" AS bh ON bh."BloqueHorarioId"=h."BloqueHorarioId"
+            WHERE h."PeriodoEscolarId"=%s
+            ORDER BY bh."HoraInicio" ASC;
+        
+        """, (periodo_escolar_id,) );
+
+        rows = cursor.fetchall()
+
+        return jsonify([{
+            "HorarioId": h[0],
+            "Dia": h[1],
+            "DocenteId": h[2],
+            "MateriaId": h[3],
+            "BloqueHorarioId": h[4],
+            "CursoId": h[5],
+            "PeriodoEscolarId": h[6],
             "Seccion": h[7],
-            "Receso": h[8]
         } for h in rows]), 200
     except Exception as err:
         ex = exception_handler(err)
