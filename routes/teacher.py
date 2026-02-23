@@ -12,7 +12,7 @@ from models.Auditoria import Auditoria
 from utils.handler import exception_handler
 from database.Auditoria import AuditoriaRep
 from database.connection import Connection
-from bcrypt import hashpw, gensalt
+from utils.config import bcrypt  # <-- Importamos flask_bcrypt igual que en users.py
 from os import getenv
 
 rep = DocenteRep()
@@ -87,7 +87,10 @@ def create_teacher():
         if not id_datos_persona:
             raise EntityNotFound("Error al registrar los datos del docente")
 
-        pwd = hashpw(f"V#{data['Cedula']}".encode("utf-8"), gensalt(rounds=int(getenv("pwd_rounds"))))
+        # --- CORRECCIÓN EN LA ENCRIPTACIÓN DE LA CONTRASEÑA ---
+        # Ahora usamos flask_bcrypt y lo decodificamos a string (texto) igual que los representantes
+        pwd = bcrypt.generate_password_hash(f"V#{data['Cedula']}", int(getenv("pwd_rounds"))).decode("utf8")
+        # --------------------------------------------------------
 
         # Creando registro de docente
         cursor.execute(
@@ -154,7 +157,8 @@ def create_teacher():
     finally:
         cursor.close()
 
-
+@teacher_bp.route("/teacher/remove_subject", methods=["DELETE"])
+def remove_subject():
     try:
         payload = Security.verify_token(request.headers)
 

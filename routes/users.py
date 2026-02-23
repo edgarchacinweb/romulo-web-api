@@ -71,19 +71,23 @@ def register():
         
         logger.debug("Validaciones realizadas")
 
+        # --- CORRECCIÓN DE ENCRIPTACIÓN DE CONTRASEÑA ---
         if not "Clave" in data or not data["Clave"]:
-            password = Security.generate_password()
+            raw_password = Security.generate_password()
             logger.debug("Clave generada")
         else:
-            password = data["Clave"]
+            raw_password = data["Clave"]
 
+        # AQUÍ ENCRIPTAMOS LA CONTRASEÑA ANTES DE GUARDARLA
+        hashed_password = bcrypt.generate_password_hash(raw_password, int(os.getenv("pwd_rounds"))).decode("utf8")
 
         user: Usuario = Usuario({
             "Email": data["Email"],
-            "Clave": password,
+            "Clave": hashed_password, # Usamos la contraseña ya encriptada (hash)
             "Rol": Rol.PARENT if data["Rol"] == Rol.PARENT.value else Rol.TEACHER,
             "DatosPersonaId": data["DatosPersonaId"]
         })
+        # ------------------------------------------------
 
         id = rep.create(user)
 
