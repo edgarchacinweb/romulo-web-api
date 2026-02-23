@@ -57,6 +57,7 @@ CREATE TABLE "Asistencia" (
 "AsistenciaId" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
 "EstudianteId" UUID NOT NULL,
 "ClaseId" UUID NOT NULL,
+"Lapso" SMALLINT NOT NULL,
 "Activo" BOOLEAN DEFAULT TRUE,
 "FechaCreacion" TIMESTAMP DEFAULT clock_timestamp()
 );
