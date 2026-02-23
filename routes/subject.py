@@ -22,7 +22,7 @@ def list_subjects():
     try:
         payload = Security.verify_token(request.headers)
 
-        if not payload or payload["role"] != Rol.ADMIN.name and payload["role"] != Rol.TEACHER.name:
+        if not payload or payload["role"] != Rol.ADMIN.name and payload["role"] != Rol.TEACHER.name and payload["role"] != Rol.PARENT.name:
             raise Unauthorized()
 
         cursor.execute("SELECT * FROM \"Materia\" WHERE \"Activo\" = true;")
