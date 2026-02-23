@@ -2,6 +2,7 @@ from utils.config import app
 from flask_cors import CORS
 from flask import jsonify
 from routes import *
+from routes.lapsos import lapsos_bp  # <-- AÑADIMOS ESTA LÍNEA PARA SOLUCIONAR EL ERROR
 from utils.logger import Logger
 import database.connection
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -55,6 +56,7 @@ app.register_blueprint(backup_bp)
 app.register_blueprint(auditory_bp)
 app.register_blueprint(class_bp)
 app.register_blueprint(assistance_bp)
+app.register_blueprint(lapsos_bp)
 
 @app.route("/hello_world")
 def hello_world():

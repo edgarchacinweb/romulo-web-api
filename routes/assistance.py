@@ -30,11 +30,18 @@ def create():
         if not Validations.is_uuid(data["ClaseId"]):
             raise ValidationError("El ID de la clase es inválido")
         
+        # --- NUEVA LÓGICA PARA JUSTIFICACIONES ---
+        # Obtenemos la lista. Si el front por alguna razón falla y no la envía, ponemos un valor por defecto para no quebrar el backend
+        justificaciones = data.get("Justificacion", [""] * len(data["EstudianteId"]))
+
+        # Ahora iteramos sobre las 3 listas al mismo tiempo usando zip()
         assitances = [Asistencia({
             "EstudianteId": e,
             "ClaseId": data["ClaseId"],
-            "Activo": a
-        }) for e, a in zip(data["EstudianteId"], data["Activo"])]
+            "Activo": a,
+            "Justificacion": j
+        }) for e, a, j in zip(data["EstudianteId"], data["Activo"], justificaciones)]
+        # -----------------------------------------
 
         count = rep.create(assitances)
 
