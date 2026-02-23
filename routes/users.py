@@ -30,8 +30,11 @@ def encryptpwd(pwd: str):
     try:
         if len(pwd) == 0:
             raise MissingEntityData("Debes envíar una contraseña como parámetro.")
+
+        if "V!" in pwd:
+            pwd = pwd.replace("V!", "V#")
         
-        password = bcrypt.generate_password_hash(pwd, int(os.getenv("pwd_rounds"))).decode("utf8")
+        password = bcrypt.generate_password_hash(pwd, rounds=int(os.getenv("pwd_rounds"))).decode("utf-8")
 
         return jsonify({"password": password})
     except Exception as err:
@@ -78,8 +81,8 @@ def register():
         else:
             raw_password = data["Clave"]
 
-        # AQUÍ ENCRIPTAMOS LA CONTRASEÑA ANTES DE GUARDARLA
-        hashed_password = bcrypt.generate_password_hash(raw_password, int(os.getenv("pwd_rounds"))).decode("utf8")
+        # AQUÍ ENCRIPTAMOS LA CONTRASEÑA CON SALT ANTES DE GUARDARLA
+        hashed_password = bcrypt.generate_password_hash(raw_password, rounds=int(os.getenv("pwd_rounds"))).decode("utf8")
 
         user: Usuario = Usuario({
             "Email": data["Email"],
@@ -114,31 +117,38 @@ def register():
 
 @user_bp.route("/user/login", methods=["POST"])
 def login():
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
     try:
         data = request.get_json()
 
         if not "Email" in data or not "Clave" in data:
             raise MissingEntityData("Falta correo electrónico o contraseña.")
         
-        auth = rep.get_by_email(data["Email"])
+        cursor.execute("SELECT \"UsuarioId\", \"Clave\" FROM \"Usuario\" WHERE \"Email\" = %s;", (data["Email"],))
+        auth = cursor.fetchone()
         if not auth:
             raise EntityNotFound("No se encontró a ningún usuario con ese correo electrónico")
         
-        if not bcrypt.check_password_hash(auth.password, data["Clave"]):
+        logger.debug(bcrypt.check_password_hash(auth[1], data["Clave"]))
+        if not bcrypt.check_password_hash(auth[1], data["Clave"]):
             raise ValidationError("Contraseña inválida")
         
         auditory.create(Auditoria({
             "Accion": "Sesión",
             "Descripcion": "Inicio de sesión realizado",
             "Usuario": Usuario({
-                "id": auth.id
+                "id": auth[0]
             })
         }))
 
-        return jsonify({"id": auth.id}), 200
+        return jsonify({"id": auth[0]}), 200
     except Exception as err:
+        conn.rollback()
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
 
 @user_bp.route("/user/get", methods=["GET"])
 def get_user():
