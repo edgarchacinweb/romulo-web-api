@@ -15,7 +15,8 @@ CREATE TYPE "estado_estudiante" AS ENUM (
 'revision',
 'inscrito',
 'retirado',
-'graduado'
+'graduado',
+'rechazado'
 );
 
 CREATE TYPE "dia" AS ENUM (

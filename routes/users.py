@@ -56,6 +56,14 @@ def register():
 
         if not Validations.is_email(data["Email"]):
             raise ValidationError("El correo electrónico introducido no es valido")
+        
+        # --- VALIDACIÓN NUEVA DE DOMINIO DE CORREO ---
+        email_domain = data["Email"].split('@')[1].lower()
+        allowed_domains = ["gmail.com", "outlook.com", "hotmail.com", "yahoo.com"]
+        if email_domain not in allowed_domains:
+            raise ValidationError("Solo se permiten correos: Gmail, Outlook, Hotmail o Yahoo")
+        # ---------------------------------------------
+
         elif not any(r in data["Rol"] for r in (Rol.PARENT.value, Rol.TEACHER.value)):
             raise ValidationError("Sólo puedes registrar un representante o un docente")
         elif not Validations.is_uuid(data["DatosPersonaId"]):
@@ -63,19 +71,23 @@ def register():
         
         logger.debug("Validaciones realizadas")
 
+        # --- CORRECCIÓN DE ENCRIPTACIÓN DE CONTRASEÑA ---
         if not "Clave" in data or not data["Clave"]:
-            password = Security.generate_password()
+            raw_password = Security.generate_password()
             logger.debug("Clave generada")
         else:
-            password = data["Clave"]
+            raw_password = data["Clave"]
 
+        # AQUÍ ENCRIPTAMOS LA CONTRASEÑA ANTES DE GUARDARLA
+        hashed_password = bcrypt.generate_password_hash(raw_password, int(os.getenv("pwd_rounds"))).decode("utf8")
 
         user: Usuario = Usuario({
             "Email": data["Email"],
-            "Clave": password,
+            "Clave": hashed_password, # Usamos la contraseña ya encriptada (hash)
             "Rol": Rol.PARENT if data["Rol"] == Rol.PARENT.value else Rol.TEACHER,
             "DatosPersonaId": data["DatosPersonaId"]
         })
+        # ------------------------------------------------
 
         id = rep.create(user)
 

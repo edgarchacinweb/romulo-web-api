@@ -13,10 +13,57 @@ people_bp = Blueprint("people", __name__)
 logger = Logger()
 rep = DatosPersonaRep()
 
+# --- VALIDACIÓN DE SEGURIDAD PARA CÉDULA ---
+def validar_reglas_cedula(cedula):
+    cedula_str = str(cedula).strip().upper()
+    
+    # 1. CASO CÉDULA ESCOLAR (11 o 12 Caracteres)
+    
+    # A. Escolar Venezolana (V Implícita): 11 dígitos numéricos
+    # Formato: Orden(1) + Año(2) + Madre(8) = 11
+    # Al guardarse como número puro, el sistema al mostrarla le agregará "V-" correctamente.
+    if len(cedula_str) == 11 and cedula_str.isdigit():
+        return True 
+
+    # B. Escolar Extranjera (E Explícita): E + 11 dígitos = 12
+    # Formato: E + Orden(1) + Año(2) + Madre(8) = 12
+    # Aquí sí permitimos la letra E para que el sistema sepa que es extranjero.
+    if len(cedula_str) == 12:
+        if cedula_str.startswith("E") and cedula_str[1:].isdigit():
+             return True
+        # Si tiene 12 caracteres pero no empieza con E, rechazamos para evitar inconsistencias.
+
+    # 2. CASO CÉDULA REGULAR (7-9 Caracteres)
+    # Verificamos si es extranjero (Empieza por E)
+    es_extranjero = cedula_str.startswith("E")
+    
+    # Validamos solo la parte numérica
+    numero_a_validar = cedula_str[1:] if es_extranjero else cedula_str
+
+    if not numero_a_validar.isdigit():
+        raise ValidationError("La cédula regular debe contener solo números (después del prefijo si aplica)")
+    
+    if numero_a_validar.startswith("0"):
+        raise ValidationError("La cédula no puede comenzar con 0")
+        
+    length = len(numero_a_validar)
+    if length < 7 or length > 9:
+        raise ValidationError("La cédula regular debe tener entre 7 y 9 dígitos")
+        
+    if int(numero_a_validar) <= 1000000:
+        raise ValidationError("La cédula debe ser mayor a 1.000.000")
+        
+    return True
+
 @people_bp.route("/people/create", methods=["POST"])
 def create():
     try:
         data = request.get_json()
+        
+        # Validación de reglas de negocio
+        if "Cedula" in data:
+            validar_reglas_cedula(data["Cedula"])
+
         person = DatosPersona({
             "Nombre": data["Nombre"],
             "Apellido": data["Apellido"],
@@ -32,7 +79,11 @@ def create():
             person.ocupacion = data["Ocupacion"]
 
         if person.ci:
-            person_response = rep.get_by_ci(int(person.ci), exception=False)
+            try:
+                # Intentamos buscar tal cual viene (string)
+                person_response = rep.get_by_ci(person.ci, exception=False)
+            except:
+                person_response = None
 
             if person_response and person_response.id:
                 person.id = person_response.id
@@ -75,7 +126,6 @@ def get(id:str = None):
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
     
-# --- LIST CORREGIDO: Estructura anidada para compatibilidad ---
 @people_bp.route("/people/list", methods=["GET"])
 def list():
     connection = Connection().get_connection()
@@ -89,7 +139,6 @@ def list():
         offset = request.args.get("offset", 0)
         limit = request.args.get("limit", 100)
 
-        # Consulta completa
         query = """
             SELECT dp."DatosPersonaId", dp."Nombre", dp."Apellido", dp."Sexo", dp."Cedula", 
                    dp."Direccion", dp."Telefono", dp."Ocupacion", u."Email", u."UsuarioId"
@@ -104,28 +153,23 @@ def list():
 
         result = []
         for row in rows:
-            # Estructuramos la respuesta como probablemente espera el Frontend
-            # { DatosPersona: {...}, Usuario: {...} }
             result.append({
+                "UsuarioId": row[9],
+                "Email": row[8],
                 "DatosPersona": {
                     "DatosPersonaId": row[0],
                     "Nombre": row[1],
                     "Apellido": row[2],
                     "Sexo": row[3],
                     "Cedula": row[4],
-                    "Direccion": row[5] if row[5] else "No asignado",
-                    "Telefono": row[6] if row[6] else "No asignado",
-                    "Ocupacion": row[7] if row[7] else "No asignado"
+                    "Direccion": row[5] if row[5] else None,
+                    "Telefono": row[6] if row[6] else None,
+                    "Ocupacion": row[7] if row[7] else None
                 },
                 "Usuario": {
                     "Email": row[8],
                     "UsuarioId": row[9]
-                },
-                # Por si acaso el frontend busca en la raíz también:
-                "Email": row[8],
-                "Telefono": row[6] if row[6] else "No asignado", 
-                "Direccion": row[5] if row[5] else "No asignado",
-                "Ocupacion": row[7] if row[7] else "No asignado"
+                }
             })
 
         return jsonify(result), 200
@@ -153,12 +197,10 @@ def delete(id):
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
 
-# --- UPDATE CORREGIDO: Ahora sí guarda Dirección y Ocupación ---
 @people_bp.route("/people/update/<string:id>", methods=["PATCH"])
 def update(id: str = ""):
     try:
         clean_id = id.strip()
-        
         payload = Security.verify_token(request.headers)
 
         if not payload or payload["role"] != Rol.ADMIN.name:
@@ -169,15 +211,15 @@ def update(id: str = ""):
 
         data_dict = request.get_json()
 
-        # Validación más flexible para permitir actualizaciones parciales
         if not data_dict:
             raise MissingEntityData("No hay datos que actualizar")
+            
+        if "Cedula" in data_dict:
+            validar_reglas_cedula(data_dict["Cedula"])
 
-        # 1. Crear objeto DatosPersona
         personData = DatosPersona(data_dict)
         personData.id = clean_id
         
-        # 2. ASIGNACIÓN MANUAL CRÍTICA (Esto faltaba)
         if "Direccion" in data_dict:
             personData.direccion = data_dict["Direccion"]
         if "Ocupacion" in data_dict:
@@ -185,10 +227,8 @@ def update(id: str = ""):
         if "Telefono" in data_dict:
             personData.phone = data_dict["Telefono"]
 
-        # 3. Actualizar en BD
         affected = rep.update(personData)
 
-        # 4. Actualizar Email si viene
         if "Email" in data_dict:
             if not Validations.is_email(data_dict["Email"]):
                 raise ValidationError("El formato del correo electrónico es inválido")
@@ -198,12 +238,7 @@ def update(id: str = ""):
             cursor.execute('UPDATE "Usuario" SET "Email" = %s WHERE "DatosPersonaId" = %s', (data_dict["Email"], clean_id))
             conn.commit()
             cursor.close() 
-            affected = True # Marcamos como afectado si se cambió el email
-
-        if not affected:
-             # Si no se afectó nada, devolvemos 200 igual para no romper el frontend, 
-             # o checkeamos si realmente hubo datos válidos.
-             pass
+            affected = True
 
         return Response(status=200)
     except Exception as err:
@@ -213,9 +248,6 @@ def update(id: str = ""):
 @people_bp.route("/people/get_parent/ci/<string:ci>", methods=["GET"])
 def get_by_ci(ci: str):
     try:
-        if not Validations.is_ci(ci):
-            raise ValidationError(f"Cedula de identidad inválida")
-
         data = rep.get_by_ci(ci)
         logger.debug("data", data.to_dict())
         return jsonify(data.to_dict()), 200

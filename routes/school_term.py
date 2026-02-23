@@ -6,10 +6,10 @@ from utils.validations import Validations
 from utils.logger import Logger
 from utils.Security import Security
 from utils.exceptions import *
-from utils.Security import Security
 from utils.handler import exception_handler
 from database.Auditoria import Auditoria, AuditoriaRep
 from database.connection import Connection
+from datetime import datetime
 
 school_term_bp = Blueprint("periodo_escolar", __name__)
 logger = Logger()
@@ -40,16 +40,42 @@ def create():
         date_from = data["FechaInicio"]
         date_to = data["FechaFin"]
 
+        # --- NUEVAS VALIDACIONES DE REGLAS DE NEGOCIO ---
+        try:
+            dt_inicio = datetime.strptime(date_from, "%Y-%m-%d")
+            dt_fin = datetime.strptime(date_to, "%Y-%m-%d")
+        except ValueError:
+            raise ValidationError("Formato de fecha inválido, se espera YYYY-MM-DD")
+
+        # 1. Validar inicio inamovible
+        if dt_inicio.month != 9 or dt_inicio.day != 16:
+            raise ValidationError("La fecha de inicio siempre debe ser el 16 de septiembre del año correspondiente.")
+        
+        # 2. Validar fin inamovible
+        if dt_fin.month != 7 or dt_fin.day != 31:
+            raise ValidationError("La fecha de fin siempre debe ser el 31 de julio del año correspondiente.")
+            
+        # 3. Validar que la duración sea exactamente un ciclo (1 año de diferencia)
+        if dt_fin.year != dt_inicio.year + 1:
+            raise ValidationError("El período escolar debe durar exactamente un ciclo (el año de finalización debe ser el consecutivo al de inicio).")
+
+        # 4. VALIDAR DUPLICIDAD (Evitar crear otro si ya existe el año)
+        latest_school_term = rep.get_latest()
+        if latest_school_term is not None:
+            # Obtenemos la fecha de inicio del último registro guardado
+            latest_start_str = str(latest_school_term.fecha_inicio)
+            latest_year = int(latest_start_str.split("-")[0])
+            
+            # Si el año que intentamos registrar es igual o menor al que ya existe, bloqueamos.
+            if dt_inicio.year <= latest_year:
+                raise ValidationError(f"El período escolar del año {dt_inicio.year} ya existe en el sistema.")
+        # ------------------------------------------------
+
         term = PeriodoEscolar({
             "FechaInicio": date_from,
             "FechaFin": date_to,
             "Capacidad": data["Capacidad"]
         })
-
-        latest_school_term = rep.get_latest()
-
-        if latest_school_term is not None and latest_school_term.fecha_inicio == term.fecha_inicio and latest_school_term.fecha_fin == term.fecha_fin:
-            return Response(status=409)
 
         term_id = rep.create(term)
 
@@ -139,6 +165,26 @@ def update():
         elif not Validations.is_date(data["FechaFin"]):
             raise ValidationError("La fecha fin del período escolar tiene un formato inválido")
         
+        # --- NUEVAS VALIDACIONES DE REGLAS DE NEGOCIO PARA ACTUALIZACIÓN ---
+        date_from = data["FechaInicio"]
+        date_to = data["FechaFin"]
+
+        try:
+            dt_inicio = datetime.strptime(date_from, "%Y-%m-%d")
+            dt_fin = datetime.strptime(date_to, "%Y-%m-%d")
+        except ValueError:
+            raise ValidationError("Formato de fecha inválido, se espera YYYY-MM-DD")
+
+        if dt_inicio.month != 9 or dt_inicio.day != 16:
+            raise ValidationError("La fecha de inicio siempre debe ser el 16 de septiembre del año correspondiente.")
+        
+        if dt_fin.month != 7 or dt_fin.day != 31:
+            raise ValidationError("La fecha de fin siempre debe ser el 31 de julio del año correspondiente.")
+            
+        if dt_fin.year != dt_inicio.year + 1:
+            raise ValidationError("El período escolar debe durar exactamente un ciclo (el año de finalización debe ser el consecutivo al de inicio).")
+        # -------------------------------------------------------------------
+
         rep.update(PeriodoEscolar({
             "id": data["PeriodoEscolarId"],
             "FechaInicio": data["FechaInicio"],
