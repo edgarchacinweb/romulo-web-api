@@ -36,7 +36,27 @@ def create():
         elif not Validations.is_date(data["FechaInicio"]) or not Validations.is_date(data["FechaFin"]):
             raise ValidationError("Los formatos de las fechas son inválidos (YYYY-MM-DD)")
         
-        registration_term = escolar_rep.get_latest()
+        # --- CORRECCIÓN DE REGLA DE NEGOCIO ---
+        # En vez de obtener el "último registrado" obtenemos el "actual en curso"
+        all_terms = escolar_rep.get_all()
+        now = datetime.now()
+        
+        # En Python, Agosto es el mes 8.
+        target_start_year = now.year if now.month >= 8 else now.year - 1
+        
+        registration_term = None
+        if all_terms:
+            for term in all_terms:
+                # Extraemos el año de inicio (puede ser object Date o String dependiendo de BD)
+                term_year = int(str(term.fecha_inicio).split("-")[0])
+                if term_year == target_start_year:
+                    registration_term = term
+                    break
+        
+        if not registration_term:
+            raise ValidationError(f"No existe un período escolar activo registrado para el ciclo {target_start_year}-{target_start_year+1}. Debes crearlo primero.")
+        # -------------------------------------
+
         format = "%Y-%m-%d"
         date_dict = {
             "Inicio": datetime.strptime(data["FechaInicio"], format).date(),
