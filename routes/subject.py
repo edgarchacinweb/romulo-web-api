@@ -32,7 +32,7 @@ def list_subjects():
             "MateriaId": s[0],
             "Nivel": s[1],
             "Nombre": s[2],
-            "Fecha": s[4].strftime("%m/%d/%Y")
+            "Fecha": s[4].strftime("%m/%d/%Y") if s[4] else ""
         } for s in rows]), 200
     except Exception as err:
         conn.rollback()
@@ -40,6 +40,48 @@ def list_subjects():
         return jsonify(ex[0]), ex[1]
     finally:
         cursor.close()
+
+# --- ENDPOINT PARA OBTENER SOLO LAS MATERIAS DEL DOCENTE ---
+@subject_bp.route("/subject/teacher", methods=["GET"])
+def teacher_subjects():
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+    try:
+        payload = Security.verify_token(request.headers)
+
+        if not payload or payload["role"] != Rol.TEACHER.name:
+            raise Unauthorized()
+
+        usuario_id = payload["id"]
+
+        # CORRECCIÓN: Nombres de columnas ajustados exactamente a como están en tu Base de Datos
+        # d."DatosPersonaId" en la tabla Docente
+        # u."DatosPersona" en la tabla Usuario
+        query = """
+            SELECT DISTINCT m."MateriaId", m."Nivel", m."Nombre", m."Activo", m."FechaCreacion" 
+            FROM "Materia" m
+            INNER JOIN "DocenteMateria" dm ON m."MateriaId" = dm."MateriaId"
+            INNER JOIN "Docente" d ON dm."DocenteId" = d."DocenteId"
+            INNER JOIN "Usuario" u ON d."DatosPersonaId" = u."DatosPersona"
+            WHERE m."Activo" = true AND u."UsuarioId" = %s;
+        """
+        
+        cursor.execute(query, (usuario_id,))
+        rows = cursor.fetchall()
+
+        return jsonify([{
+            "MateriaId": s[0],
+            "Nivel": s[1],
+            "Nombre": s[2],
+            "Fecha": s[4].strftime("%m/%d/%Y") if s[4] else ""
+        } for s in rows]), 200
+    except Exception as err:
+        conn.rollback()
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
+# ------------------------------------------------------------------
 
 @subject_bp.route("/subject/create", methods=["POST"])
 def create_subject():
@@ -61,8 +103,6 @@ def create_subject():
             raise MissingField("Debes indicar el nombre de la materia")
         elif len(data["Nombre"]) < 3:
             raise InsertEntityError("El nombre de la materia debe tener al menos 3 caracteres")
-        # elif not Validations.is_subject(data["Nombre"]):
-        #     raise InsertEntityError("El nombre de la materia tiene un formato inválido")
 
         cursor.execute("INSERT INTO \"Materia\" (\"Nivel\", \"Nombre\") VALUES (%s, %s) RETURNING \"MateriaId\";", (data["Nivel"], data["Nombre"]))
         conn.commit()

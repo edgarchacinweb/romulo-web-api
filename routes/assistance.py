@@ -59,4 +59,4 @@ def create():
         return Response(status=201)
     except Exception as err:
         ex = exception_handler(err)
-        return jsonify(ex[0]), ex[1]
+        return jsonify(ex[0]), ex[1] 
