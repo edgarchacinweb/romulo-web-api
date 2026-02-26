@@ -301,3 +301,34 @@ def count():
     except Exception as err:
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
+
+# Obtener ID del docente a través de su token de autenticación
+@teacher_bp.route("/teacher/get", methods=["GET"])
+def get_teacher_id():
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+    try:
+        payload = Security.verify_token(request.headers)
+
+        if not payload or payload["role"] != Rol.TEACHER.name:
+            raise Unauthorized()
+
+        cursor.execute(
+            """
+            SELECT d."DocenteId" FROM "Usuario" AS u INNER JOIN "Docente" AS d ON d."DatosPersonaId"=u."DatosPersona" WHERE u."UsuarioId"=%s;
+            """,
+            (payload["id"],)
+        )
+
+        id_docente = cursor.fetchone()[0]
+
+        if not id_docente:
+            raise EntityNotFound("El docente no existe")
+
+        return jsonify({"DocenteId": id_docente}), 200
+    except Exception as err:
+        conn.rollback()
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
