@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request, Response
+from flask import Blueprint, jsonify, request, Response, send_file
 from database.connection import Connection
 from utils.Security import Security
 from utils.image import resize, convert_to_webp
@@ -10,6 +10,8 @@ from utils.config import app
 import os
 import re
 from datetime import datetime
+import io
+import traceback
 
 student_bp = Blueprint("student", __name__)
 
@@ -149,7 +151,6 @@ def create():
 def get_student(id):
     conn, cursor = get_db()
     try:
-        # AQUÍ ESTÁ EL CAMBIO: Se agregó c."Grado" al SELECT para poder sumarle un año en el frontend
         query = """
             SELECT dp."Nombre", dp."Apellido", dp."Sexo", dp."Cedula", dp."Direccion", 
                    e."FechaNacimiento", e."Parentesco", ce."CursoId", c."Grado"
@@ -331,7 +332,7 @@ def submit_reinscription(id):
         if "Cedula" in data: validar_cedula_estudiante(data["Cedula"])
         if "FechaNacimiento" in data: validar_fecha_nacimiento(data["FechaNacimiento"])
 
-        # 1. Actualizar DatosPersona (Por si el representante corrigió el nombre o dirección)
+        # 1. Actualizar DatosPersona
         cursor.execute('SELECT "DatosPersonaId" FROM "Estudiante" WHERE "EstudianteId" = %s', (id,))
         row = cursor.fetchone()
         if not row: raise Exception("Estudiante no encontrado")
@@ -350,7 +351,6 @@ def submit_reinscription(id):
         if not periodo_row: raise Exception("No hay un periodo de inscripción activo para reinscribir.")
         periodo_id = periodo_row[0]
 
-        # Validar que no se generen registros duplicados si fue rechazado e intenta otra vez la reinscripción en el mismo periodo
         cursor.execute('SELECT * FROM "CursoEstudiante" WHERE "EstudianteId" = %s AND "PeriodoEscolarId" = %s', (id, periodo_id))
         if cursor.fetchone():
             cursor.execute('UPDATE "CursoEstudiante" SET "CursoId" = %s WHERE "EstudianteId" = %s AND "PeriodoEscolarId" = %s', (val_curso_id, id, periodo_id))
@@ -361,7 +361,7 @@ def submit_reinscription(id):
                 VALUES (%s, %s, %s, %s)
             """, (id, val_curso_id, seccion_asignada, periodo_id))
 
-        # 4. Procesar SOLO los archivos nuevos (Si suben algo nuevo se sobreescribe, si no, se conservan los anteriores)
+        # 4. Procesar SOLO los archivos nuevos
         if "FotoCarnet" in files:
             path = os.path.join(app.config["UPLOAD_FOLDER"], f"carnet-{id}.webp")
             resize(convert_to_webp(files["FotoCarnet"])).save(path)
@@ -456,5 +456,109 @@ def change_status(id):
     except Exception as err:
         conn.rollback()
         return jsonify({"message": str(err)}), 500
+    finally:
+        cursor.close()
+
+# --- 11. DESCARGAR PLANILLA DE INSCRIPCIÓN ---
+@student_bp.route("/students/enrollment_form/<string:id>", methods=["GET"])
+def download_enrollment_form(id):
+    conn, cursor = get_db()
+    try:
+        # 1. Obtener datos completos
+        query = """
+            SELECT dp."Nombre", dp."Apellido", dp."Cedula", dp."Sexo", dp."Direccion",
+                   e."FechaNacimiento", e."Parentesco",
+                   c."Grado", ce."Seccion",
+                   rep."Nombre", rep."Apellido", rep."Cedula", rep."Telefono", u."Email", rep."Ocupacion"
+            FROM "Estudiante" e
+            JOIN "DatosPersona" dp ON e."DatosPersonaId" = dp."DatosPersonaId"
+            LEFT JOIN "CursoEstudiante" ce ON e."EstudianteId" = ce."EstudianteId"
+            LEFT JOIN "Curso" c ON ce."CursoId" = c."CursoId"
+            JOIN "DatosPersona" rep ON e."RepresentanteId" = rep."DatosPersonaId"
+            LEFT JOIN "Usuario" u ON rep."DatosPersonaId" = u."DatosPersona"
+            WHERE e."EstudianteId" = %s
+        """
+        cursor.execute(query, (id,))
+        row = cursor.fetchone()
+        if not row:
+            return jsonify({"message": "Estudiante no encontrado"}), 404
+
+        # 2. Intentar generar PDF usando ReportLab
+        try:
+            from reportlab.pdfgen import canvas
+            from reportlab.lib.pagesizes import letter
+        except ImportError:
+            return jsonify({"message": "Falta la librería PDF en el servidor. Ejecute: pip install reportlab"}), 500
+
+        buffer = io.BytesIO()
+        p = canvas.Canvas(buffer, pagesize=letter)
+        width, height = letter
+
+        # --- DIBUJAR LA PLANILLA ---
+        p.setFont("Helvetica-Bold", 16)
+        p.drawString(180, height - 50, "PLANILLA DE INSCRIPCIÓN")
+
+        p.setFont("Helvetica-Bold", 12)
+        p.drawString(50, height - 100, "DATOS DEL ESTUDIANTE")
+        p.line(50, height - 105, 550, height - 105)
+
+        p.setFont("Helvetica", 10)
+        p.drawString(50, height - 125, f"Nombres y Apellidos: {row[0]} {row[1]}")
+        p.drawString(350, height - 125, f"Cédula: {row[2]}")
+        p.drawString(50, height - 145, f"Fecha de Nacimiento: {row[5]}")
+        p.drawString(350, height - 145, f"Género: {row[3]}")
+        p.drawString(50, height - 165, f"Dirección: {row[4]}")
+        
+        grado_str = f"{row[7]}° Año" if row[7] else "No asignado"
+        p.drawString(50, height - 185, f"Grado a cursar: {grado_str}")
+        
+        seccion_str = number_to_letter(row[8]) if row[8] else "N/A"
+        p.drawString(350, height - 185, f"Sección: {seccion_str}")
+
+        p.setFont("Helvetica-Bold", 12)
+        p.drawString(50, height - 230, "DATOS DEL REPRESENTANTE")
+        p.line(50, height - 235, 550, height - 235)
+
+        p.setFont("Helvetica", 10)
+        p.drawString(50, height - 255, f"Nombres y Apellidos: {row[9]} {row[10]}")
+        p.drawString(350, height - 255, f"Cédula: {row[11]}")
+        p.drawString(50, height - 275, f"Parentesco: {row[6]}")
+        p.drawString(350, height - 275, f"Teléfono: {row[12] if row[12] else 'No registrado'}")
+        p.drawString(50, height - 295, f"Email: {row[13] if row[13] else 'No registrado'}")
+        p.drawString(350, height - 295, f"Ocupación: {row[14] if row[14] else 'No registrado'}")
+
+        p.setFont("Helvetica-Oblique", 9)
+        p.drawString(50, 50, "Documento generado automáticamente por el Sistema de Inscripción Estudiantil.")
+
+        p.showPage()
+        p.save()
+
+        buffer.seek(0)
+        
+        # Bloque Try para compatibilidad con distintas versiones de Flask
+        try:
+            return send_file(
+                buffer,
+                as_attachment=True,
+                download_name=f"Planilla_Inscripcion_{row[0]}_{row[1]}.pdf",
+                mimetype="application/pdf"
+            )
+        except TypeError:
+            # Compatibilidad con versiones más antiguas de Flask
+            return send_file(
+                buffer,
+                as_attachment=True,
+                attachment_filename=f"Planilla_Inscripcion_{row[0]}_{row[1]}.pdf",
+                mimetype="application/pdf"
+            )
+
+    except Exception as err:
+        conn.rollback()
+        # IMPRESIÓN DEL ERROR EXACTO EN LA TERMINAL PARA DIAGNÓSTICO
+        print("\n" + "="*40)
+        print("❌ ERROR AL GENERAR LA PLANILLA PDF:")
+        traceback.print_exc()
+        print("="*40 + "\n")
+        return jsonify({"message": f"Error interno: {str(err)}"}), 500
     finally:
         cursor.close()
