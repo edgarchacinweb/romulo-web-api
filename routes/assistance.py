@@ -10,7 +10,7 @@ from database.Auditoria import AuditoriaRep, Auditoria
 from database.Clase import ClaseRep
 from database.connection import Connection
 from utils.validations import Validations
-import uuid # Importado para generar IDs únicos automáticamente
+import uuid 
 
 logger = Logger()
 rep = AsistenciaRep()
@@ -33,34 +33,35 @@ def create():
         if not Validations.is_uuid(data["ClaseId"]):
             raise ValidationError("El ID de la clase es inválido")
         
-        # --- SOLUCIÓN DEFINITIVA SEGÚN TU TABLA ASISTENCIA ---
+        fecha = data.get("Fecha")
+        if not fecha:
+             raise ValidationError("Debe especificar la fecha de la asistencia.")
+
         estudiantes = data.get("EstudianteId", [])
         asistencias = data.get("Activo", [])
         justificaciones = data.get("Justificacion", [""] * len(estudiantes))
         clase_id = data["ClaseId"]
 
-        # Insertamos manualmente para evitar el error del procedimiento "registrar_asistencia"
         count = 0
         for i in range(len(estudiantes)):
-            # Generamos un ID único para la fila (AsistenciaId según tu imagen 4)
             asistencia_id = str(uuid.uuid4())
             
+            # --- ADAPTADO A TU BASE DE DATOS: Usa FechaCreacion ---
+            # Insertamos la fecha del calendario directamente como timestamp
             cursor.execute("""
-                INSERT INTO "Asistencia" ("AsistenciaId", "EstudianteId", "ClaseId", "Activo", "Justificacion")
-                VALUES (%s::uuid, %s::uuid, %s::uuid, %s, %s)
-            """, (asistencia_id, estudiantes[i], clase_id, asistencias[i], justificaciones[i]))
+                INSERT INTO "Asistencia" ("AsistenciaId", "EstudianteId", "ClaseId", "Activo", "Justificacion", "FechaCreacion")
+                VALUES (%s::uuid, %s::uuid, %s::uuid, %s, %s, %s::timestamp)
+            """, (asistencia_id, estudiantes[i], clase_id, asistencias[i], justificaciones[i], fecha))
             count += 1
 
         if count == 0:
             raise ValidationError(f"No se recibieron estudiantes para registrar.")
 
         conn.commit()
-        # -----------------------------------------------------
 
-        # Auditoría
         AuditoriaRep().create(Auditoria({
             "Accion": "Registro",
-            "Descripcion": f"Asistencias registradas para la sección vinculada a la ClaseId: {clase_id}",
+            "Descripcion": f"Asistencias registradas para la sección vinculada a la ClaseId: {clase_id} en la fecha {fecha}",
             "Usuario": Usuario({"id": payload["id"]})
         }))
 
@@ -73,7 +74,6 @@ def create():
         if cursor: cursor.close()
 
 
-# --- ENDPOINT PARA OBTENER ESTUDIANTES CON VALIDACIÓN DE HORARIO ---
 @assistance_bp.route("/assistance/students", methods=["GET"])
 def get_class_students():
     conn = Connection().get_connection()
@@ -87,11 +87,11 @@ def get_class_students():
         materia_id = request.args.get("materiaId")
         year_str = request.args.get("year")   
         seccion_raw = request.args.get("section") 
+        fecha_str = request.args.get("fecha") 
 
-        if not materia_id or not year_str or not seccion_raw:
+        if not materia_id or not year_str or not seccion_raw or not fecha_str:
             raise ValidationError("Faltan parámetros de búsqueda para cargar la sección.")
 
-        # 1. Obtener el DocenteId
         cursor.execute("""
             SELECT d."DocenteId" 
             FROM "Docente" d
@@ -106,28 +106,24 @@ def get_class_students():
             
         docente_id = docente_row[0]
 
-        # 2. Extraer grado y sección
         try:
             grado_num = int(year_str[0])
             seccion_int = int(seccion_raw) 
         except:
             raise ValidationError("Formato de año o sección inválido.")
 
-        # 3. Obtener el CursoId
         cursor.execute('SELECT "CursoId" FROM "Curso" WHERE "Grado" = %s', (grado_num,))
         curso_row = cursor.fetchone()
         if not curso_row:
             raise Exception(f"Grado {grado_num} no encontrado.")
         curso_id = curso_row[0]
 
-        # 4. Obtener Periodo Escolar Activo
         cursor.execute('SELECT "PeriodoEscolarId" FROM "PeriodoEscolar" WHERE "Activo" = TRUE LIMIT 1')
         periodo_row = cursor.fetchone()
         if not periodo_row:
             raise Exception("No hay un periodo escolar activo.")
         periodo_id = periodo_row[0]
 
-        # 5. VALIDACIÓN EN HORARIO (Imagen 2 y 3)
         cursor.execute("""
             SELECT 1 FROM "Horario"
             WHERE "DocenteId" = %s 
@@ -143,7 +139,6 @@ def get_class_students():
                 "message": "Acceso denegado. No tienes esta sección asignada en tu horario oficial."
             }), 403
 
-        # 6. Obtener estudiantes
         cursor.execute("""
             SELECT e."EstudianteId", dp."Nombre", dp."Apellido"
             FROM "Estudiante" e
@@ -155,10 +150,7 @@ def get_class_students():
         """, (curso_id, seccion_int, periodo_id))
 
         estudiantes_rows = cursor.fetchall()
-        estudiantes_list = [{"EstudianteId": r[0], "Nombre": r[1], "Apellido": r[2]} for r in estudiantes_rows]
 
-        # 7. Obtener o CREAR el ClaseId real (Imagen 1)
-        # Ajustado para incluir PeriodoEscolarId según tu imagen
         cursor.execute("""
             SELECT "ClaseId" FROM "Clase" 
             WHERE "DocenteId" = %s AND "CursoId" = %s AND "Seccion" = %s AND "PeriodoEscolarId" = %s
@@ -172,21 +164,46 @@ def get_class_students():
         else:
             clase_id = str(uuid.uuid4())
             try:
-                # Incluimos todos los campos que se ven en tu imagen 1
                 cursor.execute("""
                     INSERT INTO "Clase" ("ClaseId", "DocenteId", "CursoId", "Seccion", "PeriodoEscolarId")
                     VALUES (%s::uuid, %s::uuid, %s::uuid, %s, %s::uuid)
                 """, (clase_id, docente_id, curso_id, seccion_int, periodo_id))
                 conn.commit()
-                print(f"✅ Clase autocreada con PeriodoId: {clase_id}")
             except Exception as e:
                 conn.rollback()
-                print(f"⚠️ Error al crear clase: {e}")
                 clase_id = "123e4567-e89b-12d3-a456-426614174000"
+
+        # --- CORRECCIÓN: Usamos DATE("FechaCreacion") para omitir la hora y que la comparación no falle ---
+        cursor.execute("""
+            SELECT "EstudianteId", "Activo", "Justificacion"
+            FROM "Asistencia"
+            WHERE "ClaseId" = %s AND DATE("FechaCreacion") = %s
+        """, (clase_id, fecha_str))
+        
+        asistencias_existentes = cursor.fetchall()
+        asistencia_cargada = len(asistencias_existentes) > 0
+        
+        # Mapeamos los datos para vincularlos rápido a los estudiantes
+        asistencia_dict = {row[0]: {"Activo": row[1], "Justificacion": row[2]} for row in asistencias_existentes}
+
+        estudiantes_list = []
+        for r in estudiantes_rows:
+            est_id = r[0]
+            info_asistencia = asistencia_dict.get(est_id)
+            
+            estudiantes_list.append({
+                "EstudianteId": est_id, 
+                "Nombre": r[1], 
+                "Apellido": r[2],
+                # Si hay registro envía True/False, si no, envía None
+                "Presente": info_asistencia["Activo"] if info_asistencia else None,
+                "Justificacion": info_asistencia["Justificacion"] if info_asistencia else ""
+            })
 
         return jsonify({
             "ClaseId": clase_id,
-            "estudiantes": estudiantes_list
+            "estudiantes": estudiantes_list,
+            "AsistenciaCargada": asistencia_cargada # Enviamos la bandera de bloqueo al JS
         }), 200
 
     except Exception as err:
