@@ -46,8 +46,6 @@ def create():
         for i in range(len(estudiantes)):
             asistencia_id = str(uuid.uuid4())
             
-            # --- ADAPTADO A TU BASE DE DATOS: Usa FechaCreacion ---
-            # Insertamos la fecha del calendario directamente como timestamp
             cursor.execute("""
                 INSERT INTO "Asistencia" ("AsistenciaId", "EstudianteId", "ClaseId", "Activo", "Justificacion", "FechaCreacion")
                 VALUES (%s::uuid, %s::uuid, %s::uuid, %s, %s, %s::timestamp)
@@ -173,7 +171,6 @@ def get_class_students():
                 conn.rollback()
                 clase_id = "123e4567-e89b-12d3-a456-426614174000"
 
-        # --- CORRECCIÓN: Usamos DATE("FechaCreacion") para omitir la hora y que la comparación no falle ---
         cursor.execute("""
             SELECT "EstudianteId", "Activo", "Justificacion"
             FROM "Asistencia"
@@ -183,7 +180,6 @@ def get_class_students():
         asistencias_existentes = cursor.fetchall()
         asistencia_cargada = len(asistencias_existentes) > 0
         
-        # Mapeamos los datos para vincularlos rápido a los estudiantes
         asistencia_dict = {row[0]: {"Activo": row[1], "Justificacion": row[2]} for row in asistencias_existentes}
 
         estudiantes_list = []
@@ -195,7 +191,6 @@ def get_class_students():
                 "EstudianteId": est_id, 
                 "Nombre": r[1], 
                 "Apellido": r[2],
-                # Si hay registro envía True/False, si no, envía None
                 "Presente": info_asistencia["Activo"] if info_asistencia else None,
                 "Justificacion": info_asistencia["Justificacion"] if info_asistencia else ""
             })
@@ -203,9 +198,112 @@ def get_class_students():
         return jsonify({
             "ClaseId": clase_id,
             "estudiantes": estudiantes_list,
-            "AsistenciaCargada": asistencia_cargada # Enviamos la bandera de bloqueo al JS
+            "AsistenciaCargada": asistencia_cargada
         }), 200
 
+    except Exception as err:
+        if conn: conn.rollback()
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        if cursor: cursor.close()
+
+# --- NUEVA RUTA: REPORTES PARA ADMINISTRADOR ---
+@assistance_bp.route("/assistance/admin/report", methods=["GET"])
+def get_admin_report():
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+    try:
+        payload = Security.verify_token(request.headers)
+        if not payload or payload["role"] != Rol.ADMIN.name:
+            raise Unauthorized("Solo los administradores pueden consultar este reporte.")
+
+        curso_id = request.args.get("cursoId")
+        seccion_raw = request.args.get("seccion")
+        fecha_str = request.args.get("fecha")
+        docente_id = request.args.get("docenteId") # Opcional
+        materia_id = request.args.get("materiaId") # Opcional
+
+        if not curso_id or not seccion_raw or not fecha_str:
+            raise ValidationError("Faltan parámetros de búsqueda (curso, sección o fecha).")
+            
+        try:
+            seccion_int = int(seccion_raw)
+        except:
+            raise ValidationError("Formato de sección inválido.")
+
+        # Realizamos el JOIN real a las tablas Asistencia, Estudiante, DatosPersona y Clase
+        query = """
+            SELECT a."AsistenciaId", a."Activo", a."Justificacion", 
+                   dp."Nombre", dp."Apellido"
+            FROM "Asistencia" a
+            JOIN "Estudiante" e ON a."EstudianteId" = e."EstudianteId"
+            JOIN "DatosPersona" dp ON e."DatosPersonaId" = dp."DatosPersonaId"
+            JOIN "Clase" c ON a."ClaseId" = c."ClaseId"
+            WHERE c."CursoId" = %s AND c."Seccion" = %s AND DATE(a."FechaCreacion") = %s
+        """
+        params = [curso_id, seccion_int, fecha_str]
+
+        # Si filtró por docente, añadimos la condición a la tabla Clase
+        if docente_id and docente_id != "undefined" and docente_id != "":
+            query += ' AND c."DocenteId" = %s'
+            params.append(docente_id)
+
+        query += ' ORDER BY dp."Apellido" ASC, dp."Nombre" ASC'
+
+        cursor.execute(query, tuple(params))
+        rows = cursor.fetchall()
+        
+        asistencias_list = []
+        for r in rows:
+            asistencias_list.append({
+                "AsistenciaId": r[0],
+                "Activo": r[1],
+                "JustificacionDocente": r[2] if r[2] else "",
+                "NombreEstudiante": f"{r[3]} {r[4]}".strip(),
+                "EditadoPorAdmin": False, # Retornamos False por defecto para no romper el FrontEnd
+                "NotaAdmin": "" 
+            })
+
+        return jsonify({"asistencias": asistencias_list}), 200
+        
+    except Exception as err:
+        if conn: conn.rollback()
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        if cursor: cursor.close()
+
+# --- NUEVA RUTA: EDICIÓN POR ADMINISTRADOR ---
+@assistance_bp.route("/assistance/admin/edit/<string:asistencia_id>", methods=["PUT"])
+def edit_admin_report(asistencia_id):
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+    try:
+        payload = Security.verify_token(request.headers)
+        if not payload or payload["role"] != Rol.ADMIN.name:
+            raise Unauthorized("Solo los administradores pueden editar asistencias.")
+
+        data = request.get_json()
+        nuevo_activo = data.get("Activo")
+        
+        # Solo actualizamos el estado "Activo"
+        cursor.execute("""
+            UPDATE "Asistencia" 
+            SET "Activo" = %s
+            WHERE "AsistenciaId" = %s
+        """, (nuevo_activo, asistencia_id))
+
+        conn.commit()
+
+        # Auditoria de quien realizó el cambio
+        AuditoriaRep().create(Auditoria({
+            "Accion": "Edición",
+            "Descripcion": f"Asistencia editada por Administrador para AsistenciaId: {asistencia_id}",
+            "Usuario": Usuario({"id": payload["id"]})
+        }))
+
+        return jsonify({"message": "Asistencia actualizada."}), 200
     except Exception as err:
         if conn: conn.rollback()
         ex = exception_handler(err)
