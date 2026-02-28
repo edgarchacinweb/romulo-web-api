@@ -196,7 +196,7 @@ def list():
             SELECT * FROM "Docente" AS d
             INNER JOIN "DatosPersona" AS dp ON d."DatosPersonaId"=dp."DatosPersonaId"
             INNER JOIN "Usuario" AS u ON u."DatosPersona"=d."DatosPersonaId"
-            ORDER BY d."FechaCreacion" DESC;
+            ORDER BY d."Activo" DESC, d."FechaCreacion" DESC;
             """
         )
 
@@ -207,7 +207,7 @@ def list():
 
         cursor.execute(
             """
-            SELECT dm."DocenteId", m."MateriaId", m."Nombre", m."Nivel" FROM "DocenteMateria" AS dm INNER JOIN "Materia" AS m ON dm."MateriaId"=m."MateriaId" WHERE dm."Activo"=TRUE;
+            SELECT dm."DocenteId", m."MateriaId", m."Nombre", m."Nivel" FROM "DocenteMateria" AS dm INNER JOIN "Materia" AS m ON dm."MateriaId"=m."MateriaId";
             """
         )
 
@@ -216,6 +216,7 @@ def list():
         return jsonify([{
             "DocenteId": t[0],
             "HorasAcademicas": t[2],
+            "Activo": t[3],
             "DatosPersona": {
                 "DatosPersonaId": t[5],
                 "Nombre": t[6],
@@ -364,6 +365,8 @@ def update(teacher_id):
             raise ValidationError("La ocupación del docente tiene un formato incorrecto")
         elif int(data["Horas"]) < 20 or int(data["Horas"]) > 40:
             raise ValidationError("Las horas del docente deben estar entre 20 y 40")
+        elif data["Activo"] not in [True, False]:
+            raise ValidationError("El estado del docente tiene un formato incorrecto")
 
         cursor.execute(
             """
@@ -389,12 +392,12 @@ def update(teacher_id):
             (data["Cedula"], data["Nombre"], data["Apellido"], data["Sexo"], data["Telefono"], data["Direccion"], data["Ocupacion"], id_datos_persona)
         )
 
-        # Actualizar horas académicas
+        # Actualizar horas académicas y estado
         cursor.execute(
             """
-            UPDATE "Docente" SET "HorasAcademicas"=%s WHERE "DocenteId"=%s;
+            UPDATE "Docente" SET "HorasAcademicas"=%s, "Activo"=%s WHERE "DocenteId"=%s;
             """,
-            (data["Horas"], teacher_id)
+            (data["Horas"], data["Activo"], teacher_id)
         )
 
         # Deshabilitar todas las materias que no aparezcan en la lista de materias
