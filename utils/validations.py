@@ -20,6 +20,10 @@ class Validations():
         return bool(re.match(pattern, password))
 
     @classmethod
+    def is_address(self, address: str):
+        return bool(re.match(pattern=r"^[a-zA-Z0-9À-ÿ\u00f1\u00d1][a-zA-Z0-9À-ÿ\u00f1\u00d1\s\.,#\-\/°\(\)]{4,254}$", string=address))
+
+    @classmethod
     def is_day(self, day: str):
         return day in ("Lunes", "Martes", "Miércoles", "Jueves", "Viernes")
     
