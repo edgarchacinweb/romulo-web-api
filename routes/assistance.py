@@ -151,9 +151,9 @@ def get_class_students():
 
         cursor.execute("""
             SELECT "ClaseId" FROM "Clase" 
-            WHERE "DocenteId" = %s AND "CursoId" = %s AND "Seccion" = %s AND "PeriodoEscolarId" = %s
+            WHERE "DocenteId" = %s AND "CursoId" = %s AND "Seccion" = %s AND "PeriodoEscolarId" = %s AND "MateriaId" = %s
             LIMIT 1
-        """, (docente_id, curso_id, seccion_int, periodo_id))
+        """, (docente_id, curso_id, seccion_int, periodo_id, materia_id))
         
         clase_row = cursor.fetchone()
         
@@ -163,9 +163,9 @@ def get_class_students():
             clase_id = str(uuid.uuid4())
             try:
                 cursor.execute("""
-                    INSERT INTO "Clase" ("ClaseId", "DocenteId", "CursoId", "Seccion", "PeriodoEscolarId")
-                    VALUES (%s::uuid, %s::uuid, %s::uuid, %s, %s::uuid)
-                """, (clase_id, docente_id, curso_id, seccion_int, periodo_id))
+                    INSERT INTO "Clase" ("ClaseId", "DocenteId", "CursoId", "Seccion", "PeriodoEscolarId", "MateriaId")
+                    VALUES (%s::uuid, %s::uuid, %s::uuid, %s, %s::uuid, %s::uuid)
+                """, (clase_id, docente_id, curso_id, seccion_int, periodo_id, materia_id))
                 conn.commit()
             except Exception as e:
                 conn.rollback()
@@ -208,7 +208,7 @@ def get_class_students():
     finally:
         if cursor: cursor.close()
 
-# --- NUEVA RUTA: REPORTES PARA ADMINISTRADOR ---
+# --- REPORTE DIARIO PARA ADMINISTRADOR ---
 @assistance_bp.route("/assistance/admin/report", methods=["GET"])
 def get_admin_report():
     conn = Connection().get_connection()
@@ -249,6 +249,11 @@ def get_admin_report():
             query += ' AND c."DocenteId" = %s'
             params.append(docente_id)
 
+        # Si filtró por materia, añadimos la condición a la tabla Clase para reportes
+        if materia_id and materia_id != "undefined" and materia_id != "":
+            query += ' AND c."MateriaId" = %s'
+            params.append(materia_id)
+
         query += ' ORDER BY dp."Apellido" ASC, dp."Nombre" ASC'
 
         cursor.execute(query, tuple(params))
@@ -274,7 +279,96 @@ def get_admin_report():
     finally:
         if cursor: cursor.close()
 
-# --- NUEVA RUTA: EDICIÓN POR ADMINISTRADOR ---
+# --- NUEVA RUTA: REPORTE CONSOLIDADO POR LAPSOS ---
+@assistance_bp.route("/assistance/admin/report_lapso", methods=["GET"])
+def get_admin_report_lapso():
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+    try:
+        payload = Security.verify_token(request.headers)
+        if not payload or payload["role"] != Rol.ADMIN.name:
+            raise Unauthorized("Solo los administradores pueden consultar este reporte.")
+
+        curso_id = request.args.get("cursoId")
+        seccion_raw = request.args.get("seccion")
+        materia_id = request.args.get("materiaId") # Opcional, para ver 1 sola materia
+        anio_escolar = request.args.get("anioEscolar", "2025-2026") # Año por defecto
+
+        if not curso_id or not seccion_raw:
+            raise ValidationError("Faltan parámetros de búsqueda (curso o sección).")
+
+        seccion_int = int(seccion_raw)
+
+        # Usamos la consulta maestra agrupada
+        query = """
+            SELECT 
+                e."EstudianteId",
+                dp."Nombre",
+                dp."Apellido",
+                m."Nombre" AS "NombreMateria",
+                l."Numero" AS "LapsoNumero",
+                SUM(CASE WHEN a."Activo" = true THEN 1 ELSE 0 END) AS "TotalAsistencias",
+                SUM(CASE WHEN a."Activo" = false THEN 1 ELSE 0 END) AS "TotalInasistencias"
+            FROM "Asistencia" a
+            JOIN "Estudiante" e ON a."EstudianteId" = e."EstudianteId"
+            JOIN "DatosPersona" dp ON e."DatosPersonaId" = dp."DatosPersonaId"
+            JOIN "Clase" c ON a."ClaseId" = c."ClaseId"
+            JOIN "Materia" m ON c."MateriaId" = m."MateriaId"
+            JOIN "Lapso" l ON a."FechaCreacion"::date BETWEEN l."FechaInicio" AND l."FechaFin"
+            WHERE c."CursoId" = %s AND c."Seccion" = %s AND l."AñoEscolar" = %s
+        """
+        params = [curso_id, seccion_int, anio_escolar]
+
+        if materia_id and materia_id != "undefined" and materia_id != "":
+            query += ' AND c."MateriaId" = %s'
+            params.append(materia_id)
+
+        query += ' GROUP BY e."EstudianteId", dp."Nombre", dp."Apellido", m."Nombre", l."Numero" ORDER BY dp."Apellido" ASC, dp."Nombre" ASC, m."Nombre" ASC, l."Numero" ASC'
+
+        cursor.execute(query, tuple(params))
+        rows = cursor.fetchall()
+
+        # Estructuramos la data en un JSON limpio para el Frontend
+        estudiantes_map = {}
+        for r in rows:
+            est_id = r[0]
+            nombre_completo = f"{r[2]} {r[1]}".strip()
+            materia = r[3]
+            lapso = int(r[4])
+            asistencias = int(r[5])
+            inasistencias = int(r[6])
+
+            if est_id not in estudiantes_map:
+                estudiantes_map[est_id] = {
+                    "EstudianteId": est_id,
+                    "NombreEstudiante": nombre_completo,
+                    "Materias": {}
+                }
+
+            if materia not in estudiantes_map[est_id]["Materias"]:
+                estudiantes_map[est_id]["Materias"][materia] = {
+                    "1": {"A": 0, "I": 0},
+                    "2": {"A": 0, "I": 0},
+                    "3": {"A": 0, "I": 0}
+                }
+
+            if lapso in [1, 2, 3]:
+                estudiantes_map[est_id]["Materias"][materia][str(lapso)]["A"] = asistencias
+                estudiantes_map[est_id]["Materias"][materia][str(lapso)]["I"] = inasistencias
+
+        # Convertimos a Lista
+        reporte = list(estudiantes_map.values())
+
+        return jsonify({"reporte_lapsos": reporte}), 200
+
+    except Exception as err:
+        if conn: conn.rollback()
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        if cursor: cursor.close()
+
+# --- EDICIÓN POR ADMINISTRADOR ---
 @assistance_bp.route("/assistance/admin/edit/<string:asistencia_id>", methods=["PUT"])
 def edit_admin_report(asistencia_id):
     conn = Connection().get_connection()

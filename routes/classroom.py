@@ -5,6 +5,7 @@ from models.Usuario import Rol, Usuario
 from models.Docente import Docente
 from models.Curso import Curso
 from models.PeriodoEscolar import PeriodoEscolar
+from models.Materia import Materia
 from utils.exceptions import *
 from utils.validations import Validations
 from utils.Security import Security
@@ -25,7 +26,7 @@ def create():
         
         data = request.get_json()
 
-        if not any(key in data for key in ("DocenteId", "CursoId", "PeriodoEscolarId", "Seccion")):
+        if not any(key in data for key in ("DocenteId", "CursoId", "PeriodoEscolarId", "Seccion", "MateriaId")):
             raise MissingEntityData("No se recibieron datos suficientes")
         if not Validations.is_uuid(data["DocenteId"]):
             raise InvalidId("El ID del docente es inválido.")
@@ -33,6 +34,8 @@ def create():
             raise InvalidId("El ID del curso es inválido.")
         if not Validations.is_uuid(data["PeriodoEscolarId"]):
             raise InvalidId("El ID del periodo escolar es inválido.")
+        if "MateriaId" in data and not Validations.is_uuid(data["MateriaId"]):
+            raise InvalidId("El ID de la materia es inválido.")
         if not Validations.is_section(data["Seccion"]):
             raise ValidationError("La sección introducida es inválida.")
 
@@ -46,6 +49,9 @@ def create():
             "PeriodoEscolar": PeriodoEscolar({
                 "id": data["PeriodoEscolarId"]
             }),
+            "Materia": Materia({
+                "id": data["MateriaId"]
+            }) if "MateriaId" in data else None,
             "Seccion": data["Seccion"]
         }))
 
