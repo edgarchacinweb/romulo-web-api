@@ -19,7 +19,11 @@ class UsuarioRep(Repository):
             cursor = self.db_connection.cursor()
             sql = "INSERT INTO \"Usuario\" (\"Email\", \"Clave\", \"Rol\", \"DatosPersona\") VALUES (%s,%s,%s,%s) RETURNING \"UsuarioId\""
             self.logger.info(f"Usuario create query: {sql}")
-            model.password = bcrypt.generate_password_hash(model.password, int(os.getenv("pwd_rounds"))).decode("utf8")
+            
+            # ⚠️ AQUÍ ESTABA EL ERROR DE DOBLE ENCRIPTACIÓN. 
+            # La línea que volvía a usar bcrypt.generate_password_hash fue eliminada,
+            # ya que la contraseña ya viene encriptada desde el archivo users.py
+            
             cursor.execute(sql, (model.email, model.password, model.role.value, model.DatosPersonaId))
             id = cursor.fetchone()[0]
             cursor.close()
