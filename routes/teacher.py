@@ -453,3 +453,44 @@ def update(teacher_id):
         return jsonify(ex[0]), ex[1]
     finally:
         cursor.close()
+
+@teacher_bp.route("/teacher/subjects", methods=["GET"])
+def get_subjects():
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+    try:
+        payload = Security.verify_token(request.headers)
+
+        if not payload or payload["role"] != Rol.ADMIN.name and payload["role"] != Rol.TEACHER.name:
+            raise Unauthorized()
+
+        # Obtener el ID del docente
+        cursor.execute(
+            """
+            SELECT d."DocenteId" FROM "Usuario" AS u INNER JOIN "Docente" AS d ON d."DatosPersonaId"=u."DatosPersona" WHERE u."UsuarioId"=%s;
+            """,
+            (payload["id"],)
+        )
+
+        teacher_id = cursor.fetchone()[0]
+
+        if not teacher_id:
+            raise EntityNotFound("No se encontró el docente")
+
+        cursor.execute(
+            """
+            SELECT dm."DocenteId", m."MateriaId", m."Nombre", m."Nivel" FROM "DocenteMateria" AS dm INNER JOIN "Materia" AS m ON dm."MateriaId"=m."MateriaId" WHERE dm."DocenteId"=%s;
+            """,
+            (teacher_id,)
+        )
+
+        subjects = cursor.fetchall()
+
+        return jsonify([{"MateriaId": s[1], "Nombre": s[2], "Nivel": s[3]} for s in subjects]), 200
+    except Exception as err:
+        conn.rollback()
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
+
