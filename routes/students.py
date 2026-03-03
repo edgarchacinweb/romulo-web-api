@@ -494,39 +494,70 @@ def download_enrollment_form(id):
         p = canvas.Canvas(buffer, pagesize=letter)
         width, height = letter
 
-        # --- DIBUJAR LA PLANILLA ---
-        p.setFont("Helvetica-Bold", 16)
-        p.drawString(180, height - 50, "PLANILLA DE INSCRIPCIÓN")
+        # --- DIBUJAR MEMBRETE Y LOGO ---
+        
+        # LOGO DIRECTO DESDE EL BACKEND:
+        # Busca la imagen en la carpeta "assets" justo al lado de este archivo students.py
+        logo_path = os.path.join(os.path.dirname(__file__), 'assets', 'romulo.png')
+        
+        if os.path.exists(logo_path):
+            try:
+                # Posicionamos el logo a la izquierda (X=40) y arriba (Y=height-100)
+                p.drawImage(logo_path, 40, height - 100, width=70, height=70, preserveAspectRatio=True, mask='auto')
+            except Exception as e:
+                print(f"Error cargando logo desde {logo_path}: {e}")
+        else:
+            print(f"\n⚠️ ADVERTENCIA: No se encontró el logo en {logo_path}. Asegúrate de crear la carpeta y poner la imagen ahí.\n")
 
+        # Texto del Membrete (Centrado)
+        p.setFont("Helvetica-Bold", 10)
+        p.drawCentredString(width / 2.0, height - 40, "REPÚBLICA BOLIVARIANA DE VENEZUELA")
+        p.drawCentredString(width / 2.0, height - 52, "MINISTERIO DEL PODER POPULAR PARA LA EDUCACIÓN")
+        p.drawCentredString(width / 2.0, height - 64, "LICEO NACIONAL DON ROMULO GALLEGOS * S2990D0503")
+        
+        p.setFont("Helvetica", 8)
+        p.drawCentredString(width / 2.0, height - 76, "C/SAN MATEO, BARRIO ALAYON, P. ANDRES ELOY BLANCO MARACAY")
+
+        # Línea separadora del encabezado
+        p.setLineWidth(1)
+        p.line(40, height - 105, width - 40, height - 105)
+
+        # --- TÍTULO DE LA PLANILLA (Desplazado hacia abajo) ---
+        p.setFont("Helvetica-Bold", 14)
+        p.drawCentredString(width / 2.0, height - 140, "PLANILLA DE INSCRIPCIÓN")
+
+        # --- DATOS DEL ESTUDIANTE ---
         p.setFont("Helvetica-Bold", 12)
-        p.drawString(50, height - 100, "DATOS DEL ESTUDIANTE")
-        p.line(50, height - 105, 550, height - 105)
+        p.drawString(50, height - 180, "DATOS DEL ESTUDIANTE")
+        p.line(50, height - 185, 550, height - 185)
 
         p.setFont("Helvetica", 10)
-        p.drawString(50, height - 125, f"Nombres y Apellidos: {row[0]} {row[1]}")
-        p.drawString(350, height - 125, f"Cédula: {row[2]}")
-        p.drawString(50, height - 145, f"Fecha de Nacimiento: {row[5]}")
-        p.drawString(350, height - 145, f"Género: {row[3]}")
-        p.drawString(50, height - 165, f"Dirección: {row[4]}")
+        p.drawString(50, height - 205, f"Nombres y Apellidos: {row[0]} {row[1]}")
+        p.drawString(350, height - 205, f"Cédula: {row[2]}")
+        p.drawString(50, height - 225, f"Fecha de Nacimiento: {row[5]}")
+        p.drawString(350, height - 225, f"Género: {row[3]}")
+        p.drawString(50, height - 245, f"Dirección: {row[4]}")
         
         grado_str = f"{row[7]}° Año" if row[7] else "No asignado"
-        p.drawString(50, height - 185, f"Grado a cursar: {grado_str}")
+        p.drawString(50, height - 265, f"Grado a cursar: {grado_str}")
         
         seccion_str = number_to_letter(row[8]) if row[8] else "N/A"
-        p.drawString(350, height - 185, f"Sección: {seccion_str}")
+        p.drawString(350, height - 265, f"Sección: {seccion_str}")
 
+        # --- DATOS DEL REPRESENTANTE ---
         p.setFont("Helvetica-Bold", 12)
-        p.drawString(50, height - 230, "DATOS DEL REPRESENTANTE")
-        p.line(50, height - 235, 550, height - 235)
+        p.drawString(50, height - 310, "DATOS DEL REPRESENTANTE")
+        p.line(50, height - 315, 550, height - 315)
 
         p.setFont("Helvetica", 10)
-        p.drawString(50, height - 255, f"Nombres y Apellidos: {row[9]} {row[10]}")
-        p.drawString(350, height - 255, f"Cédula: {row[11]}")
-        p.drawString(50, height - 275, f"Parentesco: {row[6]}")
-        p.drawString(350, height - 275, f"Teléfono: {row[12] if row[12] else 'No registrado'}")
-        p.drawString(50, height - 295, f"Email: {row[13] if row[13] else 'No registrado'}")
-        p.drawString(350, height - 295, f"Ocupación: {row[14] if row[14] else 'No registrado'}")
+        p.drawString(50, height - 335, f"Nombres y Apellidos: {row[9]} {row[10]}")
+        p.drawString(350, height - 335, f"Cédula: {row[11]}")
+        p.drawString(50, height - 355, f"Parentesco: {row[6]}")
+        p.drawString(350, height - 355, f"Teléfono: {row[12] if row[12] else 'No registrado'}")
+        p.drawString(50, height - 375, f"Email: {row[13] if row[13] else 'No registrado'}")
+        p.drawString(350, height - 375, f"Ocupación: {row[14] if row[14] else 'No registrado'}")
 
+        # Pie de página
         p.setFont("Helvetica-Oblique", 9)
         p.drawString(50, 50, "Documento generado automáticamente por el Sistema de Inscripción Estudiantil.")
 
