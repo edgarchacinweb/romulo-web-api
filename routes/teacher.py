@@ -346,6 +346,7 @@ def update(teacher_id):
             raise Unauthorized()
 
         data = request.get_json()
+        admin_id = payload["id"]
 
         if any(key not in data for key in ("Cedula", "Nombre", "Apellido", "Sexo", "Telefono", "Direccion", "Ocupacion", "Horas", "Materias")):
             raise MissingEntityData("No se recibieron datos suficientes")
@@ -443,6 +444,14 @@ def update(teacher_id):
             UPDATE "Usuario" SET "Email"=%s WHERE "DatosPersona"=%s;
             """,
             (data["Email"], id_datos_persona)
+        )
+
+        # Registrar en auditorías
+        cursor.execute(
+            """
+            INSERT INTO "Auditoria" ("Accion", "Descripcion", "Usuario") VALUES (%s, %s, %s);
+            """,
+            ("Actualización", f"Datos del docente {data['Nombre']} {data['Apellido']} actualizados", admin_id)
         )
 
         conn.commit()
