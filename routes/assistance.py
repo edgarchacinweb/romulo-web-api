@@ -279,7 +279,7 @@ def get_admin_report():
     finally:
         if cursor: cursor.close()
 
-# --- NUEVA RUTA: REPORTE CONSOLIDADO POR LAPSOS ---
+# --- NUEVA RUTA: REPORTE CONSOLIDADO POR LAPSOS (ACTUALIZADA CON CÉDULA) ---
 @assistance_bp.route("/assistance/admin/report_lapso", methods=["GET"])
 def get_admin_report_lapso():
     conn = Connection().get_connection()
@@ -299,12 +299,13 @@ def get_admin_report_lapso():
 
         seccion_int = int(seccion_raw)
 
-        # Usamos la consulta maestra agrupada
+        # Usamos la consulta maestra agrupada, AHORA INCLUYENDO dp."Cedula"
         query = """
             SELECT 
                 e."EstudianteId",
                 dp."Nombre",
                 dp."Apellido",
+                dp."Cedula", 
                 m."Nombre" AS "NombreMateria",
                 l."Numero" AS "LapsoNumero",
                 SUM(CASE WHEN a."Activo" = true THEN 1 ELSE 0 END) AS "TotalAsistencias",
@@ -323,7 +324,8 @@ def get_admin_report_lapso():
             query += ' AND c."MateriaId" = %s'
             params.append(materia_id)
 
-        query += ' GROUP BY e."EstudianteId", dp."Nombre", dp."Apellido", m."Nombre", l."Numero" ORDER BY dp."Apellido" ASC, dp."Nombre" ASC, m."Nombre" ASC, l."Numero" ASC'
+        # Añadimos dp."Cedula" al GROUP BY
+        query += ' GROUP BY e."EstudianteId", dp."Nombre", dp."Apellido", dp."Cedula", m."Nombre", l."Numero" ORDER BY dp."Apellido" ASC, dp."Nombre" ASC, m."Nombre" ASC, l."Numero" ASC'
 
         cursor.execute(query, tuple(params))
         rows = cursor.fetchall()
@@ -333,15 +335,17 @@ def get_admin_report_lapso():
         for r in rows:
             est_id = r[0]
             nombre_completo = f"{r[2]} {r[1]}".strip()
-            materia = r[3]
-            lapso = int(r[4])
-            asistencias = int(r[5])
-            inasistencias = int(r[6])
+            cedula = r[3]
+            materia = r[4]
+            lapso = int(r[5])
+            asistencias = int(r[6])
+            inasistencias = int(r[7])
 
             if est_id not in estudiantes_map:
                 estudiantes_map[est_id] = {
                     "EstudianteId": est_id,
                     "NombreEstudiante": nombre_completo,
+                    "Cedula": cedula, # AGREGADA AL JSON
                     "Materias": {}
                 }
 
