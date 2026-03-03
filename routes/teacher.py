@@ -195,7 +195,8 @@ def list():
             """
             SELECT * FROM "Docente" AS d
             INNER JOIN "DatosPersona" AS dp ON d."DatosPersonaId"=dp."DatosPersonaId"
-            INNER JOIN "Usuario" AS u ON u."DatosPersona"=d."DatosPersonaId";
+            INNER JOIN "Usuario" AS u ON u."DatosPersona"=d."DatosPersonaId"
+            ORDER BY d."Activo" DESC, d."FechaCreacion" DESC;
             """
         )
 
@@ -215,6 +216,7 @@ def list():
         return jsonify([{
             "DocenteId": t[0],
             "HorasAcademicas": t[2],
+            "Activo": t[3],
             "DatosPersona": {
                 "DatosPersonaId": t[5],
                 "Nombre": t[6],
@@ -332,3 +334,172 @@ def get_teacher_id():
         return jsonify(ex[0]), ex[1]
     finally:
         cursor.close()
+
+@teacher_bp.route("/teacher/update/<string:teacher_id>", methods=["PUT"])
+def update(teacher_id):
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+    try:
+        payload = Security.verify_token(request.headers)
+
+        if not payload or payload["role"] != Rol.ADMIN.name:
+            raise Unauthorized()
+
+        data = request.get_json()
+        admin_id = payload["id"]
+
+        if any(key not in data for key in ("Cedula", "Nombre", "Apellido", "Sexo", "Telefono", "Direccion", "Ocupacion", "Horas", "Materias")):
+            raise MissingEntityData("No se recibieron datos suficientes")
+        elif not Validations.is_ci(data["Cedula"]):
+            raise ValidationError("El número de Cédula del docente tiene un formato incorrecto")
+        elif not Validations.is_name(data["Nombre"]):
+            raise ValidationError("El nombre del docente tiene un formato incorrecto")
+        elif not Validations.is_name(data["Apellido"]):
+            raise ValidationError("El apellido del docente tiene un formato incorrecto")
+        elif data["Sexo"] not in ["Masculino", "Femenino"]:
+            raise ValidationError("El sexo del docente tiene un formato incorrecto")
+        elif not Validations.is_phone(data["Telefono"]):
+            raise ValidationError("El teléfono del docente tiene un formato incorrecto")
+        elif not Validations.is_address(data["Direccion"]):
+            raise ValidationError("La dirección del docente tiene un formato incorrecto")
+        elif not Validations.is_occupation(data["Ocupacion"]):
+            raise ValidationError("La ocupación del docente tiene un formato incorrecto")
+        elif int(data["Horas"]) < 20 or int(data["Horas"]) > 40:
+            raise ValidationError("Las horas del docente deben estar entre 20 y 40")
+        elif data["Activo"] not in [True, False]:
+            raise ValidationError("El estado del docente tiene un formato incorrecto")
+
+        cursor.execute(
+            """
+            SELECT "DatosPersonaId" FROM "Docente" WHERE "DocenteId"=%s;
+            """,
+            (teacher_id,)
+        )
+
+        result = cursor.fetchone()
+        if result is None:
+            raise EntityNotFound("El docente no existe")
+
+        id_datos_persona = result[0]
+
+        if not id_datos_persona:
+            raise EntityNotFound("El docente no existe")
+
+        # Actualizar datos personales
+        cursor.execute(
+            """
+            UPDATE "DatosPersona" SET "Cedula"=%s, "Nombre"=%s, "Apellido"=%s, "Sexo"=%s, "Telefono"=%s, "Direccion"=%s, "Ocupacion"=%s WHERE "DatosPersonaId"=%s;
+            """,
+            (data["Cedula"], data["Nombre"], data["Apellido"], data["Sexo"], data["Telefono"], data["Direccion"], data["Ocupacion"], id_datos_persona)
+        )
+
+        # Actualizar horas académicas y estado
+        cursor.execute(
+            """
+            UPDATE "Docente" SET "HorasAcademicas"=%s, "Activo"=%s WHERE "DocenteId"=%s;
+            """,
+            (data["Horas"], data["Activo"], teacher_id)
+        )
+
+        # Deshabilitar todas las materias que no aparezcan en la lista de materias
+        cursor.execute(
+            """
+            UPDATE "DocenteMateria" SET "Activo"=FALSE WHERE "DocenteId"=%s AND "MateriaId" NOT IN %s;
+            """,
+            (teacher_id, tuple(data["Materias"]))
+        )
+
+        # Habilitar las materias que aparezcan en la lista de materias
+        cursor.execute(
+            """
+            UPDATE "DocenteMateria" SET "Activo"=TRUE WHERE "DocenteId"=%s AND "MateriaId" IN %s;
+            """,
+            (teacher_id, tuple(data["Materias"]))
+        )
+
+        # Agregar las materias que aparecen en la lista de materias pero no existen en la tabla DocenteMateria
+        cursor.execute(
+            """
+            SELECT "DocenteId", "MateriaId" FROM "DocenteMateria";
+            """
+        )
+
+        materias_existentes = cursor.fetchall()
+        materias_a_agregar = []
+
+        for materia in data["Materias"]:
+            if (teacher_id, materia) not in materias_existentes:
+                materias_a_agregar.append((teacher_id, materia))
+
+        cursor.executemany(
+            """
+            INSERT INTO "DocenteMateria" ("DocenteId", "MateriaId") VALUES (%s, %s);
+            """,
+            materias_a_agregar
+        )
+
+        # Actualizar el correo electrónico
+        cursor.execute(
+            """
+            UPDATE "Usuario" SET "Email"=%s WHERE "DatosPersona"=%s;
+            """,
+            (data["Email"], id_datos_persona)
+        )
+
+        # Registrar en auditorías
+        cursor.execute(
+            """
+            INSERT INTO "Auditoria" ("Accion", "Descripcion", "Usuario") VALUES (%s, %s, %s);
+            """,
+            ("Actualización", f"Datos del docente {data['Nombre']} {data['Apellido']} actualizados", admin_id)
+        )
+
+        conn.commit()
+        return jsonify({"DocenteId": teacher_id}), 200
+    except Exception as err:
+        conn.rollback()
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
+
+@teacher_bp.route("/teacher/subjects", methods=["GET"])
+def get_subjects():
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+    try:
+        payload = Security.verify_token(request.headers)
+
+        if not payload or payload["role"] != Rol.ADMIN.name and payload["role"] != Rol.TEACHER.name:
+            raise Unauthorized()
+
+        # Obtener el ID del docente
+        cursor.execute(
+            """
+            SELECT d."DocenteId" FROM "Usuario" AS u INNER JOIN "Docente" AS d ON d."DatosPersonaId"=u."DatosPersona" WHERE u."UsuarioId"=%s;
+            """,
+            (payload["id"],)
+        )
+
+        teacher_id = cursor.fetchone()[0]
+
+        if not teacher_id:
+            raise EntityNotFound("No se encontró el docente")
+
+        cursor.execute(
+            """
+            SELECT dm."DocenteId", m."MateriaId", m."Nombre", m."Nivel" FROM "DocenteMateria" AS dm INNER JOIN "Materia" AS m ON dm."MateriaId"=m."MateriaId" WHERE dm."DocenteId"=%s;
+            """,
+            (teacher_id,)
+        )
+
+        subjects = cursor.fetchall()
+
+        return jsonify([{"MateriaId": s[1], "Nombre": s[2], "Nivel": s[3]} for s in subjects]), 200
+    except Exception as err:
+        conn.rollback()
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
+

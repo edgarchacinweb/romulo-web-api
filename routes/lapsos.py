@@ -92,3 +92,33 @@ def create_lapsos():
         return jsonify(ex[0]), ex[1]
     finally:
         cursor.close()
+
+@lapsos_bp.route("/lapsos/get", methods=["GET"])
+def get_lapsos():
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+    try:
+        payload = Security.verify_token(request.headers)
+        if not payload or payload["role"] not in [Rol.ADMIN.name, Rol.TEACHER.name]:
+            raise Unauthorized()
+    
+        cursor.execute('SELECT "LapsoId", "Numero", "FechaInicio", "FechaFin", "AñoEscolar" FROM "Lapso" WHERE CURRENT_DATE BETWEEN "FechaInicio" AND "FechaFin";')
+        rows = cursor.fetchall()
+
+        if len(rows) == 0:
+            return Response(status=404)
+
+        row = rows[0]
+        return jsonify({
+            "LapsoId": row[0],
+            "Numero": row[1],
+            "FechaInicio": row[2].strftime("%Y-%m-%d"),
+            "FechaFin": row[3].strftime("%Y-%m-%d"),
+            "AñoEscolar": row[4]
+        }), 200
+    except Exception as err:
+        conn.rollback()
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()

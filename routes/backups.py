@@ -75,7 +75,7 @@ def download(file):
         if not path.exists(f"backups/{file}"):
             raise Exception("No se encontró el archivo de respaldo específicado")
 
-        return send_file(f"../backups/{file}", file)
+        return send_file(f"../backups/{file}", as_attachment=True, download_name=file)
     except Exception as err:
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]

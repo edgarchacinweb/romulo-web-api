@@ -457,3 +457,23 @@ def update_parent():
         return jsonify(ex[0]), ex[1]
     finally:
         cursor.close()
+
+@user_bp.route("/users/count", methods=["GET"])
+def count():
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+    try:
+        payload = Security.verify_token(request.headers)
+
+        if not payload or payload["role"] != Rol.ADMIN.name:
+            raise Unauthorized()
+        
+        cursor.execute("SELECT COUNT(*) FROM \"Usuario\" WHERE \"Activo\" = TRUE;")
+        count = cursor.fetchone()[0]
+        return jsonify({"count": count}), 200
+    except Exception as err:
+        conn.rollback()
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]    
+    finally:
+        cursor.close()
