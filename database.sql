@@ -54,13 +54,14 @@ CREATE TABLE "Clase" (
 "FechaCreacion" TIMESTAMP DEFAULT clock_timestamp()
 );
 
+-- Se eliminó la columna Lapso (SMALLINT) y se agregó Justificacion (VARCHAR 255)
 CREATE TABLE "Asistencia" (
 "AsistenciaId" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
 "EstudianteId" UUID NOT NULL,
 "ClaseId" UUID NOT NULL,
-"Lapso" SMALLINT NOT NULL,
 "Activo" BOOLEAN DEFAULT TRUE,
-"FechaCreacion" TIMESTAMP DEFAULT clock_timestamp()
+"FechaCreacion" TIMESTAMP DEFAULT clock_timestamp(),
+"Justificacion" VARCHAR(255) DEFAULT ''
 );
 
 CREATE TABLE "Materia" (
@@ -79,6 +80,7 @@ CREATE TABLE "BloqueHorario" (
 "FechaCreacion" TIMESTAMP DEFAULT clock_timestamp()
 );
 
+-- Se mantiene como en database.sql (sin la columna de Receso)
 CREATE TABLE "Horario" (
 "HorarioId" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
 "Dia" DIA NOT NULL,
@@ -137,6 +139,7 @@ CREATE TABLE "Nota" (
 "Lapso" SMALLINT NOT NULL,
 "MateriaId" UUID NOT NULL,
 "EstudianteId" UUID NOT NULL,
+"LapsoId" UUID NOT NULL,
 "Activo" BOOLEAN DEFAULT TRUE,
 "FechaCreacion" TIMESTAMP DEFAULT clock_timestamp()
 );
@@ -205,6 +208,17 @@ CREATE TABLE "Incidencia" (
 "Fecha" DATE NOT NULL
 );
 
+-- Tabla Lapso agregada desde romulodbb.sql
+CREATE TABLE "Lapso" (
+"LapsoId" SERIAL PRIMARY KEY,
+"Numero" INTEGER NOT NULL,
+"FechaInicio" DATE NOT NULL,
+"FechaFin" DATE NOT NULL,
+"AñoEscolar" VARCHAR(20) NOT NULL
+);
+
+
+-- Restricciones (Constraints)
 ALTER TABLE "Docente" ADD CONSTRAINT Docente_Minimo_Horas_Academicas CHECK ("Docente"."HorasAcademicas" >= 20);
 ALTER TABLE "Incidencia" ADD FOREIGN KEY ("DatosPersonaId") REFERENCES "DatosPersona" ("DatosPersonaId");
 ALTER TABLE "Clase" ADD FOREIGN KEY ("CursoId") REFERENCES "Curso" ("CursoId");
@@ -223,6 +237,7 @@ ALTER TABLE "Horario" ADD FOREIGN KEY ("PeriodoEscolarId") REFERENCES "PeriodoEs
 ALTER TABLE "Horario" ADD FOREIGN KEY ("MateriaId") REFERENCES "Materia" ("MateriaId");
 ALTER TABLE "Nota" ADD FOREIGN KEY ("MateriaId") REFERENCES "Materia" ("MateriaId");
 ALTER TABLE "Nota" ADD FOREIGN KEY ("EstudianteId") REFERENCES "Estudiante" ("EstudianteId");
+ALTER TABLE "Nota" ADD FOREIGN KEY ("LapsoId") REFERENCES "Lapso" ("LapsoId");
 ALTER TABLE "Estudiante" ADD FOREIGN KEY ("DatosPersonaId") REFERENCES "DatosPersona" ("DatosPersonaId");
 ALTER TABLE "Estudiante" ADD FOREIGN KEY ("RepresentanteId") REFERENCES "DatosPersona" ("DatosPersonaId");
 ALTER TABLE "Docente" ADD FOREIGN KEY ("DatosPersonaId") REFERENCES "DatosPersona" ("DatosPersonaId");
@@ -233,8 +248,10 @@ ALTER TABLE "Auditoria" ADD FOREIGN KEY ("UsuarioId") REFERENCES "Usuario" ("Usu
 ALTER TABLE "Curso" ADD CONSTRAINT CK_Curso_Grado CHECK ("Curso"."Grado" >= 1 AND "Curso"."Grado" <= 5);
 ALTER TABLE "Nota" ADD CONSTRAINT CK_Nota_Ponderacion CHECK ("Nota"."Ponderacion" >= 0 AND "Nota"."Ponderacion" <= 20);
 ALTER TABLE "Nota" ADD CONSTRAINT CK_Nota_Lapso CHECK ("Nota"."Lapso" >= 1 AND "Nota"."Lapso" <= 3);
+
 CREATE INDEX Cedula_index ON "DatosPersona" ("Cedula");
 
+-- Semillas de Datos Originales conservadas
 INSERT INTO "Curso" ("Grado") VALUES (1), (2), (3), (4), (5);
 INSERT INTO "Usuario" ("Email", "Clave", "Rol") VALUES ('romulogallegosproyecto@gmail.com', '$2b$10$w75IUe68HwWRQGXmLGVQmumMWLHcubkDLCEsBq1lmNrKvNgflcOuO', 'administrador');
 
@@ -252,7 +269,7 @@ VALUES
 ('11:25', '12:05'),
 ('12:05', '12:45');
 
--- Procedimientos almacenados
+-- Procedimientos almacenados originales
 CREATE PROCEDURE registrar_curso_estudiante(estudiante_id UUID, curso_id UUID) AS $$
 DECLARE
 	seccion SMALLINT;
