@@ -49,6 +49,7 @@ CREATE TABLE "Clase" (
 "DocenteId" UUID NOT NULL,
 "CursoId" UUID NOT NULL,
 "PeriodoEscolarId" UUID NOT NULL,
+"MateriaId" UUID NOT NULL,
 "Seccion" INTEGER NOT NULL,
 "Activo" BOOLEAN DEFAULT TRUE,
 "FechaCreacion" TIMESTAMP DEFAULT clock_timestamp()
@@ -224,6 +225,7 @@ ALTER TABLE "Incidencia" ADD FOREIGN KEY ("DatosPersonaId") REFERENCES "DatosPer
 ALTER TABLE "Clase" ADD FOREIGN KEY ("CursoId") REFERENCES "Curso" ("CursoId");
 ALTER TABLE "Clase" ADD FOREIGN KEY ("DocenteId") REFERENCES "Docente" ("DocenteId");
 ALTER TABLE "Clase" ADD FOREIGN KEY ("PeriodoEscolarId") REFERENCES "PeriodoEscolar" ("PeriodoEscolarId");
+ALTER TABLE "Clase" ADD FOREIGN KEY ("MateriaId") REFERENCES "Materia" ("MateriaId");
 ALTER TABLE "Asistencia" ADD FOREIGN KEY ("ClaseId") REFERENCES "Clase" ("ClaseId");
 ALTER TABLE "Asistencia" ADD FOREIGN KEY ("EstudianteId") REFERENCES "Estudiante" ("EstudianteId");
 ALTER TABLE "CursoEstudiante" ADD FOREIGN KEY ("EstudianteId") REFERENCES "Estudiante" ("EstudianteId");
