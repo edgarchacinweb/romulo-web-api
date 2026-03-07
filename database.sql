@@ -209,13 +209,22 @@ CREATE TABLE "Incidencia" (
 "Fecha" DATE NOT NULL
 );
 
--- Tabla Lapso agregada desde romulodbb.sql
 CREATE TABLE "Lapso" (
 "LapsoId" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
 "Numero" INTEGER NOT NULL,
 "FechaInicio" DATE NOT NULL,
 "FechaFin" DATE NOT NULL,
 "AñoEscolar" VARCHAR(20) NOT NULL
+);
+
+CREATE TABLE "PeriodoCargaNota" (
+	"PeriodoCargaNotaId" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+	"FechaInicio" DATE NOT NULL,
+	"FechaFin" DATE NOT NULL,
+	"PeriodoEscolarId" UUID NOT NULL,
+	"LapsoId" UUID NOT NULL,
+	"Activo" BOOLEAN DEFAULT TRUE,
+	"FechaCreacion" TIMESTAMP DEFAULT clock_timestamp()
 );
 
 
@@ -250,6 +259,8 @@ ALTER TABLE "Auditoria" ADD FOREIGN KEY ("UsuarioId") REFERENCES "Usuario" ("Usu
 ALTER TABLE "Curso" ADD CONSTRAINT CK_Curso_Grado CHECK ("Curso"."Grado" >= 1 AND "Curso"."Grado" <= 5);
 ALTER TABLE "Nota" ADD CONSTRAINT CK_Nota_Ponderacion CHECK ("Nota"."Ponderacion" >= 0 AND "Nota"."Ponderacion" <= 20);
 ALTER TABLE "Nota" ADD CONSTRAINT CK_Nota_Lapso CHECK ("Nota"."Lapso" >= 1 AND "Nota"."Lapso" <= 3);
+ALTER TABLE "PeriodoCargaNota" ADD FOREIGN KEY ("PeriodoEscolarId") REFERENCES "PeriodoEscolar" ("PeriodoEscolarId");
+ALTER TABLE "PeriodoCargaNota" ADD FOREIGN KEY ("LapsoId") REFERENCES "Lapso" ("LapsoId");
 
 CREATE INDEX Cedula_index ON "DatosPersona" ("Cedula");
 
