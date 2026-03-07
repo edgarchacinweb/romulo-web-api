@@ -211,7 +211,7 @@ CREATE TABLE "Incidencia" (
 
 -- Tabla Lapso agregada desde romulodbb.sql
 CREATE TABLE "Lapso" (
-"LapsoId" SERIAL PRIMARY KEY,
+"LapsoId" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
 "Numero" INTEGER NOT NULL,
 "FechaInicio" DATE NOT NULL,
 "FechaFin" DATE NOT NULL,
