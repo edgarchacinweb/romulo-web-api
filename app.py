@@ -57,6 +57,7 @@ app.register_blueprint(auditory_bp)
 app.register_blueprint(class_bp)
 app.register_blueprint(assistance_bp)
 app.register_blueprint(lapsos_bp)
+app.register_blueprint(loadcalificationsterm_bp)
 
 @app.route("/hello_world")
 def hello_world():

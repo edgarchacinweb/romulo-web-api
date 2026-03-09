@@ -5,6 +5,10 @@ from PIL import Image
 
 class Validations():
     @classmethod
+    def is_valid_date(self, date: str) -> bool:
+        return bool(re.match(r"^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$", date))
+
+    @classmethod
     def is_occupation(self, occupation: str):
         pattern = r"^[a-zA-ZÀ-ÿ\u00f1\u00d1]+(\s?[a-zA-ZÀ-ÿ\u00f1\u00d1\.\-]+)*$"
         return bool(re.match(pattern, occupation))
