@@ -10,7 +10,7 @@ from utils.handler import exception_handler
 from utils.validations import Validations
 from utils.logger import Logger
 from utils.Security import Security
-from database.connection import Connection  # <--- CORRECCIÓN 1: Importación añadida
+from database.connection import Connection
 
 rep = CursoRep()
 logger = Logger()

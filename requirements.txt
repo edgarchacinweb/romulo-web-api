@@ -21,11 +21,15 @@ itsdangerous==2.2.0
 Jinja2==3.1.5
 lxml==6.0.2
 MarkupSafe==3.0.2
+<<<<<<< HEAD
 more-itertools==10.8.0
 numpy==2.4.2
 pandas==3.0.1
 pillow==12.1.0
 premailer==3.10.0
+=======
+pillow==12.1.1
+>>>>>>> main
 psycopg2-binary==2.9.11
 PyJWT==2.10.1
 python-dateutil==2.9.0.post0
