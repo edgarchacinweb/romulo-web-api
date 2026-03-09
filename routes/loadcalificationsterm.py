@@ -36,7 +36,7 @@ def list():
         FROM
             "PeriodoCargaNota" AS pcn
         INNER JOIN "PeriodoEscolar" AS pe ON pe."PeriodoEscolarId"=pcn."PeriodoEscolarId"
-        INNER JOIN "Lapso" AS l ON l."LapsoId"=pcn."LapsoId";
+        INNER JOIN "Lapso" AS l ON l."LapsoId"=pcn."LapsoId" ORDER BY pcn."FechaCreacion" DESC;
         """)
         rows = cursor.fetchall()
 
@@ -107,6 +107,13 @@ def save():
             return jsonify({"PeriodoCargaNotaId": data["PeriodoCargaNotaId"]}), code
         else:
             code = 201
+
+            # Desactivar todos los periodos anteriores
+            cursor.execute("""
+            UPDATE "PeriodoCargaNota" SET "Activo"=false WHERE "PeriodoEscolarId"=%s AND "LapsoId"=%s
+            """, (data["PeriodoEscolarId"], data["LapsoId"]))
+
+            #Insertar nuevo registro
             cursor.execute("""
             INSERT INTO "PeriodoCargaNota" ("FechaInicio", "FechaFin", "PeriodoEscolarId", "LapsoId")
             VALUES (%s, %s, %s, %s) RETURNING "PeriodoCargaNotaId";
