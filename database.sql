@@ -99,7 +99,7 @@ CREATE TABLE "DatosPersona" (
 "Nombre" VARCHAR NOT NULL,
 "Apellido" VARCHAR NOT NULL,
 "Sexo" SEXO NOT NULL,
-"Cedula" INTEGER UNIQUE,
+"Cedula" VARCHAR(20) UNIQUE,
 "Telefono" VARCHAR(12) NULL UNIQUE,
 "Direccion" VARCHAR(100) NULL,
 "Ocupacion" VARCHAR(50) NULL,
@@ -137,7 +137,6 @@ CREATE TABLE "EstadoEstudiante" (
 CREATE TABLE "Nota" (
 "NotaId" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
 "Ponderacion" SMALLINT NOT NULL,
-"Lapso" SMALLINT NOT NULL,
 "MateriaId" UUID NOT NULL,
 "EstudianteId" UUID NOT NULL,
 "LapsoId" UUID NOT NULL,
