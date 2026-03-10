@@ -408,3 +408,62 @@ def edit_admin_report(asistencia_id):
         return jsonify(ex[0]), ex[1]
     finally:
         if cursor: cursor.close()
+
+# --- NUEVA RUTA: ESTADÍSTICAS MENSUALES DEL DOCENTE ---
+@assistance_bp.route("/assistance/teacher/monthly_stats", methods=["GET"])
+def get_teacher_monthly_stats():
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+    try:
+        payload = Security.verify_token(request.headers)
+        if not payload or payload["role"] != Rol.TEACHER.name:
+            raise Unauthorized("Solo los docentes pueden consultar sus estadísticas.")
+
+        usuario_id = payload["id"]
+
+        # 1. Obtener DocenteId
+        cursor.execute("""
+            SELECT d."DocenteId" 
+            FROM "Docente" d
+            JOIN "Usuario" u ON d."DatosPersonaId" = u."DatosPersona"
+            WHERE u."UsuarioId" = %s
+        """, (usuario_id,))
+        
+        docente_row = cursor.fetchone()
+        if not docente_row:
+            raise ValidationError("Docente no encontrado")
+            
+        docente_id = docente_row[0]
+
+        # 2. Calcular estadísticas (Total de estudiantes vs Presentes) del MES ACTUAL
+        cursor.execute("""
+            SELECT 
+                COUNT(a."AsistenciaId") AS total,
+                SUM(CASE WHEN a."Activo" = true THEN 1 ELSE 0 END) AS presentes
+            FROM "Asistencia" a
+            JOIN "Clase" c ON a."ClaseId" = c."ClaseId"
+            WHERE c."DocenteId" = %s
+              AND EXTRACT(MONTH FROM a."FechaCreacion") = EXTRACT(MONTH FROM CURRENT_DATE)
+              AND EXTRACT(YEAR FROM a."FechaCreacion") = EXTRACT(YEAR FROM CURRENT_DATE)
+        """, (docente_id,))
+
+        row = cursor.fetchone()
+        total = row[0] if row and row[0] else 0
+        presentes = row[1] if row and row[1] else 0
+
+        porcentaje = 0
+        if total > 0:
+            porcentaje = round((presentes / total) * 100)
+
+        return jsonify({
+            "total": total,
+            "presentes": presentes,
+            "porcentaje": porcentaje
+        }), 200
+
+    except Exception as err:
+        if conn: conn.rollback()
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        if cursor: cursor.close()
