@@ -36,7 +36,7 @@ def list():
         FROM
             "PeriodoCargaNota" AS pcn
         INNER JOIN "PeriodoEscolar" AS pe ON pe."PeriodoEscolarId"=pcn."PeriodoEscolarId"
-        INNER JOIN "Lapso" AS l ON l."LapsoId"=pcn."LapsoId" ORDER BY pcn."FechaCreacion" DESC;
+        INNER JOIN "Lapso" AS l ON l."LapsoId"=pcn."LapsoId" ORDER BY pcn."Activo" DESC, pcn."FechaCreacion" DESC;
         """)
         rows = cursor.fetchall()
 
@@ -121,6 +121,70 @@ def save():
             id = cursor.fetchone()
             conn.commit()
             return jsonify({"PeriodoCargaNotaId": id[0]}), code
+
+    except Exception as err:
+        conn.rollback()
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
+
+@loadcalificationsterm_bp.route("/load-calification-term/get", methods=["GET"])
+def get():
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+    try:
+        payload = Security.verify_token(request.headers)
+        if not payload or payload["role"] not in [Rol.ADMIN.name, Rol.TEACHER.name]:
+            raise Unauthorized()
+    
+        cursor.execute(
+            """
+            SELECT
+                pcn."PeriodoCargaNotaId",
+                pcn."FechaInicio",
+                pcn."FechaFin",
+                pcn."PeriodoEscolarId",
+                pe."FechaInicio",
+                pe."FechaFin",
+                pe."Activo",
+                pe."CapacidadSecciones",
+                pcn."LapsoId",
+                l."FechaInicio",
+                l."FechaFin",
+                l."Numero",
+                l."AñoEscolar",
+                pcn."Activo"
+            FROM "PeriodoCargaNota" AS pcn
+            INNER JOIN "PeriodoEscolar" AS pe ON pe."PeriodoEscolarId"=pcn."PeriodoEscolarId"
+            INNER JOIN "Lapso" AS l ON l."LapsoId"=pcn."LapsoId"
+            WHERE pcn."Activo"=TRUE AND CURRENT_DATE BETWEEN pcn."FechaInicio" AND pcn."FechaFin";
+            """
+        )
+
+        row = cursor.fetchone()
+        if not row:
+            raise ResourceNotFound("No hay un período de carga de notas activo")
+        return jsonify({
+            "PeriodoCargaNotaId": row[0],
+            "FechaInicio": row[1].strftime("%Y-%m-%d"),
+            "FechaFin": row[2].strftime("%Y-%m-%d"),
+            "PeriodoEscolar": {
+                "PeriodoEscolarId": row[3],
+                "FechaInicio": row[4].strftime("%Y-%m-%d"),
+                "FechaFin": row[5].strftime("%Y-%m-%d"),
+                "Activo": row[6],
+                "CapacidadSecciones": row[7]
+            },
+            "Lapso": {
+                "LapsoId": row[8],
+                "FechaInicio": row[9].strftime("%Y-%m-%d"),
+                "FechaFin": row[10].strftime("%Y-%m-%d"),
+                "Numero": row[11],
+                "AñoEscolar": row[12]
+            },
+            "Activo": row[13]
+        }), 200
 
     except Exception as err:
         conn.rollback()
