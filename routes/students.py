@@ -464,24 +464,41 @@ def change_status(id):
 def download_enrollment_form(id):
     conn, cursor = get_db()
     try:
-        # 1. Obtener datos completos
+        # 1. Obtener datos completos y hacer JOIN con PeriodoEscolar
         query = """
             SELECT dp."Nombre", dp."Apellido", dp."Cedula", dp."Sexo", dp."Direccion",
                    e."FechaNacimiento", e."Parentesco",
                    c."Grado", ce."Seccion",
-                   rep."Nombre", rep."Apellido", rep."Cedula", rep."Telefono", u."Email", rep."Ocupacion"
+                   rep."Nombre", rep."Apellido", rep."Cedula", rep."Telefono", u."Email", rep."Ocupacion",
+                   pe."FechaInicio", pe."FechaFin"
             FROM "Estudiante" e
             JOIN "DatosPersona" dp ON e."DatosPersonaId" = dp."DatosPersonaId"
             LEFT JOIN "CursoEstudiante" ce ON e."EstudianteId" = ce."EstudianteId"
             LEFT JOIN "Curso" c ON ce."CursoId" = c."CursoId"
             JOIN "DatosPersona" rep ON e."RepresentanteId" = rep."DatosPersonaId"
             LEFT JOIN "Usuario" u ON rep."DatosPersonaId" = u."DatosPersona"
+            LEFT JOIN "PeriodoEscolar" pe ON ce."PeriodoEscolarId" = pe."PeriodoEscolarId"
             WHERE e."EstudianteId" = %s
         """
         cursor.execute(query, (id,))
         row = cursor.fetchone()
         if not row:
             return jsonify({"message": "Estudiante no encontrado"}), 404
+
+        # --- RECOPILACIÓN DE FECHAS (IMPRESIÓN Y PERIODO ESCOLAR) ---
+        # Fecha de hoy (con formato AM/PM garantizado)
+        fecha_impresion = datetime.now().strftime("%d/%m/%Y %I:%M %p").upper()
+        
+        # Formatear el periodo escolar sacando solo los años (Ej: 2024 - 2025)
+        periodo_str = "No asignado"
+        if row[15] and row[16]:
+            try:
+                year_start = str(row[15]).split('-')[0]
+                year_end = str(row[16]).split('-')[0]
+                periodo_str = f"{year_start} - {year_end}"
+            except Exception:
+                pass
+
 
         # 2. Intentar generar PDF usando ReportLab
         try:
@@ -497,17 +514,15 @@ def download_enrollment_form(id):
         # --- DIBUJAR MEMBRETE Y LOGO ---
         
         # LOGO DIRECTO DESDE EL BACKEND:
-        # Busca la imagen en la carpeta "assets" justo al lado de este archivo students.py
         logo_path = os.path.join(os.path.dirname(__file__), 'assets', 'romulo.png')
         
         if os.path.exists(logo_path):
             try:
-                # Posicionamos el logo a la izquierda (X=40) y arriba (Y=height-100)
                 p.drawImage(logo_path, 40, height - 100, width=70, height=70, preserveAspectRatio=True, mask='auto')
             except Exception as e:
                 print(f"Error cargando logo desde {logo_path}: {e}")
         else:
-            print(f"\n⚠️ ADVERTENCIA: No se encontró el logo en {logo_path}. Asegúrate de crear la carpeta y poner la imagen ahí.\n")
+            print(f"\n⚠️ ADVERTENCIA: No se encontró el logo en {logo_path}.\n")
 
         # Texto del Membrete (Centrado)
         p.setFont("Helvetica-Bold", 10)
@@ -518,44 +533,47 @@ def download_enrollment_form(id):
         p.setFont("Helvetica", 8)
         p.drawCentredString(width / 2.0, height - 76, "C/SAN MATEO, BARRIO ALAYON, P. ANDRES ELOY BLANCO MARACAY")
 
-        # Línea separadora del encabezado
-        p.setLineWidth(1)
-        p.line(40, height - 105, width - 40, height - 105)
+      
 
-        # --- TÍTULO DE LA PLANILLA (Desplazado hacia abajo) ---
+        # --- NUEVOS CAMPOS: PERIODO Y FECHA DE IMPRESIÓN (Justo debajo del membrete) ---
+        p.setFont("Helvetica-Bold", 10)
+        p.drawString(50, height - 125, f"Período Escolar: {periodo_str}")
+        p.drawRightString(550, height - 125, f"Fecha de Emisión: {fecha_impresion}")
+
+        # --- TÍTULO DE LA PLANILLA ---
         p.setFont("Helvetica-Bold", 14)
-        p.drawCentredString(width / 2.0, height - 140, "PLANILLA DE INSCRIPCIÓN")
+        p.drawCentredString(width / 2.0, height - 160, "PLANILLA DE INSCRIPCIÓN")
 
         # --- DATOS DEL ESTUDIANTE ---
         p.setFont("Helvetica-Bold", 12)
-        p.drawString(50, height - 180, "DATOS DEL ESTUDIANTE")
-        p.line(50, height - 185, 550, height - 185)
+        p.drawString(50, height - 200, "DATOS DEL ESTUDIANTE")
+        p.line(50, height - 205, 550, height - 205)
 
         p.setFont("Helvetica", 10)
-        p.drawString(50, height - 205, f"Nombres y Apellidos: {row[0]} {row[1]}")
-        p.drawString(350, height - 205, f"Cédula: {row[2]}")
-        p.drawString(50, height - 225, f"Fecha de Nacimiento: {row[5]}")
-        p.drawString(350, height - 225, f"Género: {row[3]}")
-        p.drawString(50, height - 245, f"Dirección: {row[4]}")
+        p.drawString(50, height - 225, f"Nombres y Apellidos: {row[0]} {row[1]}")
+        p.drawString(350, height - 225, f"Cédula: {row[2]}")
+        p.drawString(50, height - 245, f"Fecha de Nacimiento: {row[5]}")
+        p.drawString(350, height - 245, f"Género: {row[3]}")
+        p.drawString(50, height - 265, f"Dirección: {row[4]}")
         
         grado_str = f"{row[7]}° Año" if row[7] else "No asignado"
-        p.drawString(50, height - 265, f"Grado a cursar: {grado_str}")
+        p.drawString(50, height - 285, f"Grado a cursar: {grado_str}")
         
         seccion_str = number_to_letter(row[8]) if row[8] else "N/A"
-        p.drawString(350, height - 265, f"Sección: {seccion_str}")
+        p.drawString(350, height - 285, f"Sección: {seccion_str}")
 
         # --- DATOS DEL REPRESENTANTE ---
         p.setFont("Helvetica-Bold", 12)
-        p.drawString(50, height - 310, "DATOS DEL REPRESENTANTE")
-        p.line(50, height - 315, 550, height - 315)
+        p.drawString(50, height - 330, "DATOS DEL REPRESENTANTE")
+        p.line(50, height - 335, 550, height - 335)
 
         p.setFont("Helvetica", 10)
-        p.drawString(50, height - 335, f"Nombres y Apellidos: {row[9]} {row[10]}")
-        p.drawString(350, height - 335, f"Cédula: {row[11]}")
-        p.drawString(50, height - 355, f"Parentesco: {row[6]}")
-        p.drawString(350, height - 355, f"Teléfono: {row[12] if row[12] else 'No registrado'}")
-        p.drawString(50, height - 375, f"Email: {row[13] if row[13] else 'No registrado'}")
-        p.drawString(350, height - 375, f"Ocupación: {row[14] if row[14] else 'No registrado'}")
+        p.drawString(50, height - 355, f"Nombres y Apellidos: {row[9]} {row[10]}")
+        p.drawString(350, height - 355, f"Cédula: {row[11]}")
+        p.drawString(50, height - 375, f"Parentesco: {row[6]}")
+        p.drawString(350, height - 375, f"Teléfono: {row[12] if row[12] else 'No registrado'}")
+        p.drawString(50, height - 395, f"Email: {row[13] if row[13] else 'No registrado'}")
+        p.drawString(350, height - 395, f"Ocupación: {row[14] if row[14] else 'No registrado'}")
 
         # Pie de página
         p.setFont("Helvetica-Oblique", 9)
