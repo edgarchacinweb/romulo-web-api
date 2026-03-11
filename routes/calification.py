@@ -46,6 +46,7 @@ def create():
             elif not Validations.is_uuid(item["LapsoId"]):
                 raise ValidationError("El ID del lapso es inválido")
 
+        logger.info(item["LapsoId"])
         # Buscar si existe una nota con la misma MateriaId, EstudianteId y LapsoId
         cursor.execute("""SELECT * FROM "Nota" WHERE "MateriaId"=%s AND "EstudianteId"=%s AND "LapsoId"=%s;""", (item["MateriaId"], item["EstudianteId"], item["LapsoId"]))
         row = cursor.fetchone()
@@ -59,7 +60,7 @@ def create():
 
         conn.commit()
 
-        return Response(status=201);
+        return Response(status=201)
     except Exception as err:
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]

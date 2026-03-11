@@ -15,4 +15,3 @@ from .backups import backup_bp
 from .auditory import auditory_bp
 from .classroom import class_bp
 from .assistance import assistance_bp
-from .loadcalificationsterm import loadcalificationsterm_bp

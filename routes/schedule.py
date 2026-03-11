@@ -178,9 +178,28 @@ def create():
                     VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """, (item["CursoId"], item["Seccion"], periodo_escolar_id, item["Dia"], item["BloqueHorarioId"], item["DocenteId"], item["MateriaId"]))
             
-            conn.commit()
+        # Consultar todo el horario para regresar cambios
+        cursor.execute("""
+        SELECT * FROM "Horario" AS h
+        INNER JOIN "BloqueHorario" AS bh ON bh."BloqueHorarioId"=h."BloqueHorarioId"
+        WHERE h."CursoId"=%s AND h."Seccion"=%s AND h."PeriodoEscolarId"=%s
+        ORDER BY bh."HoraInicio" ASC;
+        
+        """, (data[0]["CursoId"], data[0]["Seccion"], periodo_escolar_id))
 
-        return Response(status=201)
+        rows = cursor.fetchall()
+        conn.commit()
+
+        return jsonify([{
+            "HorarioId": h[0],
+            "Dia": h[1],
+            "DocenteId": h[2],
+            "MateriaId": h[3],
+            "BloqueHorarioId": h[4],
+            "CursoId": h[5],
+            "PeriodoEscolarId": h[6],
+            "Seccion": h[7]
+        } for h in rows]), 201
     except Exception as err:
         conn.rollback()
         ex = exception_handler(err)
