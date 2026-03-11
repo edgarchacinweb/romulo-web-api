@@ -4,6 +4,7 @@ from utils.handler import exception_handler
 from utils.exceptions import * 
 from utils.validations import Validations
 from utils.Security import Security
+from utils.helpers import number_to_letter
 from database.connection import Connection
 
 schedule_bp = Blueprint("schedule", __name__)
@@ -170,14 +171,21 @@ def create():
                 cursor.execute("""
                     UPDATE "Horario"
                     SET "MateriaId"=%s, "DocenteId"=%s
-                    WHERE "CursoId"=%s AND "Seccion"=%s AND "PeriodoEscolarId"=%s AND "Dia"=%s
+                    WHERE "CursoId"=%s AND "Seccion"=%s AND "PeriodoEscolarId"=%s AND "Dia"=%s;
                 """, (item["MateriaId"], item["DocenteId"], item["CursoId"], item["Seccion"], periodo_escolar_id, item["Dia"]))
             else:
                 cursor.execute("""
                     INSERT INTO "Horario" ("CursoId", "Seccion", "PeriodoEscolarId", "Dia", "BloqueHorarioId", "DocenteId", "MateriaId")
                     VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """, (item["CursoId"], item["Seccion"], periodo_escolar_id, item["Dia"], item["BloqueHorarioId"], item["DocenteId"], item["MateriaId"]))
-            
+        
+        # Registrando auditoría
+        cursor.execute("SELECT \"Grado\" FROM \"Curso\" WHERE \"CursoId\"=%s", (data[0]["CursoId"],))
+        row = cursor.fetchone()
+        cursor.execute("""
+            INSERT INTO "Auditoria" ("UsuarioId", "Accion", "Descripcion") VALUES (%s, %s, %s)
+        """, (payload["id"], "Moficación", f"Actualizado horario de ${row[0]}° {number_to_letter(int(data[0]["Seccion"]))}"))
+
         # Consultar todo el horario para regresar cambios
         cursor.execute("""
         SELECT * FROM "Horario" AS h
