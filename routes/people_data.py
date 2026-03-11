@@ -235,7 +235,8 @@ def update(id: str = ""):
             
             conn = Connection().get_connection()
             cursor = conn.cursor()
-            cursor.execute('UPDATE "Usuario" SET "Email" = %s WHERE "DatosPersonaId" = %s', (data_dict["Email"], clean_id))
+            # AQUÍ ESTÁ LA CORRECCIÓN APLICADA:
+            cursor.execute('UPDATE "Usuario" SET "Email" = %s WHERE "DatosPersona" = %s', (data_dict["Email"], clean_id))
             conn.commit()
             cursor.close() 
             affected = True
