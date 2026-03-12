@@ -23,8 +23,8 @@ def create():
     try:
         payload = Security.verify_token(request.headers)
 
-        # if not payload or payload["role"] != Rol.ADMIN.name or payload["role"] != Rol.TEACHER.name:
-        #     raise Unauthorized()
+        if not payload or payload["role"] != Rol.ADMIN.name and payload["role"] != Rol.TEACHER.name:
+            raise Unauthorized()
         
         data = request.get_json()
 
@@ -46,17 +46,16 @@ def create():
             elif not Validations.is_uuid(item["LapsoId"]):
                 raise ValidationError("El ID del lapso es inválido")
 
-        logger.info(item["LapsoId"])
-        # Buscar si existe una nota con la misma MateriaId, EstudianteId y LapsoId
-        cursor.execute("""SELECT * FROM "Nota" WHERE "MateriaId"=%s AND "EstudianteId"=%s AND "LapsoId"=%s;""", (item["MateriaId"], item["EstudianteId"], item["LapsoId"]))
-        row = cursor.fetchone()
-        
-        # Actualizar Nota con nueva Ponderacion
-        if row:
-            cursor.execute("""UPDATE "Nota" SET "Ponderacion"=%s WHERE "MateriaId"=%s AND "EstudianteId"=%s AND "LapsoId"=%s;""", (item["Ponderacion"], item["MateriaId"], item["EstudianteId"], item["LapsoId"]))
-        # Crear nuevo registro de Nota
-        else:
-            cursor.execute("""INSERT INTO "Nota" ("Ponderacion", "MateriaId", "EstudianteId", "LapsoId") VALUES (%s, %s, %s, %s);""", (item["Ponderacion"], item["MateriaId"], item["EstudianteId"], item["LapsoId"]))
+            # Buscar si existe una nota con la misma MateriaId, EstudianteId y LapsoId
+            cursor.execute("""SELECT * FROM "Nota" WHERE "MateriaId"=%s AND "EstudianteId"=%s AND "LapsoId"=%s;""", (item["MateriaId"], item["EstudianteId"], item["LapsoId"]))
+            row = cursor.fetchone()
+            
+            # Actualizar Nota con nueva Ponderacion
+            if row:
+                cursor.execute("""UPDATE "Nota" SET "Ponderacion"=%s WHERE "MateriaId"=%s AND "EstudianteId"=%s AND "LapsoId"=%s;""", (item["Ponderacion"], item["MateriaId"], item["EstudianteId"], item["LapsoId"]))
+            # Crear nuevo registro de Nota
+            else:
+                cursor.execute("""INSERT INTO "Nota" ("Ponderacion", "MateriaId", "EstudianteId", "LapsoId") VALUES (%s, %s, %s, %s);""", (item["Ponderacion"], item["MateriaId"], item["EstudianteId"], item["LapsoId"]))
 
         conn.commit()
 
@@ -73,10 +72,39 @@ def list():
     cursor = conn.cursor()
     try:
         payload = Security.verify_token(request.headers)
-        # if not payload or payload["role"] != Rol.ADMIN.name or payload["role"] != Rol.TEACHER.name:
-        #     raise Unauthorized()
+        if not payload or payload["role"] != Rol.ADMIN.name and payload["role"] != Rol.TEACHER.name:
+            raise Unauthorized()
         
         cursor.execute("""SELECT "NotaId", "Ponderacion", "MateriaId", "EstudianteId", "LapsoId" FROM "Nota";""")
+        rows = cursor.fetchall()
+
+        if len(rows) == 0:
+            return jsonify([]), 200
+        
+        return jsonify([{
+            "NotaId": n[0],
+            "Ponderacion": n[1],
+            "MateriaId": n[2],
+            "EstudianteId": n[3],
+            "LapsoId": n[4]
+        } for n in rows]), 200
+    except Exception as err:
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
+
+@blueprint.route("/calification/student/<string:student_id>", methods=["GET"])
+def get_by_student(student_id):
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+    try:
+        payload = Security.verify_token(request.headers)
+        logger.debug(payload, Rol.ADMIN.name)
+        if not payload or payload["role"] != Rol.ADMIN.name and payload["role"] != Rol.PARENT.name:
+            raise Unauthorized()
+        
+        cursor.execute("""SELECT "NotaId", "Ponderacion", "MateriaId", "EstudianteId", "LapsoId" FROM "Nota" WHERE "EstudianteId"=%s;""", (student_id,))
         rows = cursor.fetchall()
 
         if len(rows) == 0:

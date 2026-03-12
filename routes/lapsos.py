@@ -21,7 +21,7 @@ def get_current_lapsos():
             raise Unauthorized()
 
         # Buscar los lapsos del año escolar actual (ordenados del 1 al 3)
-        cursor.execute('SELECT "Numero", "FechaInicio", "FechaFin", "AñoEscolar" FROM "Lapso" ORDER BY "Numero" ASC LIMIT 3;')
+        cursor.execute('SELECT "LapsoId","Numero", "FechaInicio", "FechaFin", "AñoEscolar" FROM "Lapso" ORDER BY "Numero" ASC LIMIT 3;')
         rows = cursor.fetchall()
 
         if not rows:
@@ -32,13 +32,14 @@ def get_current_lapsos():
         lapsos_data = []
         for row in rows:
             lapsos_data.append({
-                "lapso": row[0],
-                "fecha_inicio": row[1].strftime("%Y-%m-%d"),
-                "fecha_fin": row[2].strftime("%Y-%m-%d")
+                "lapso_id": row[0],
+                "lapso": row[1],
+                "fecha_incio": row[2].strftime("%Y-%m-%d"),
+                "fecha_fin": row[3].strftime("%Y-%m-%d")
             })
 
         return jsonify({
-            "año_escolar": rows[0][3],
+            "año_escolar": rows[0][4],
             "lapsos": lapsos_data
         }), 200
 
