@@ -184,7 +184,7 @@ def create():
         row = cursor.fetchone()
         cursor.execute("""
             INSERT INTO "Auditoria" ("UsuarioId", "Accion", "Descripcion") VALUES (%s, %s, %s)
-        """, (payload["id"], "Moficación", f"Actualizado horario de ${row[0]}° {number_to_letter(int(data[0]["Seccion"]))}"))
+        """, (payload["id"], "Modificación", f"Actualizado horario de {row[0]}° {number_to_letter(int(data[0]["Seccion"]))}"))
 
         # Consultar todo el horario para regresar cambios
         cursor.execute("""

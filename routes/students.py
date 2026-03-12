@@ -188,6 +188,7 @@ def filter_students():
         busqueda = data.get("Busqueda", "").strip()
         curso_id = data.get("CursoId", "")
         seccion = data.get("Seccion", "")
+        periodo_escolar_id = data.get("PeriodoEscolarId", "")
 
         query = """
             SELECT DISTINCT ON (e."EstudianteId") 
@@ -206,6 +207,10 @@ def filter_students():
             WHERE ee."Estado" = %s
         """
         params = [estado]
+
+        if periodo_escolar_id and periodo_escolar_id != "undefined" and periodo_escolar_id != "":
+            query += ' AND ce."PeriodoEscolarId" = %s'
+            params.append(periodo_escolar_id)
 
         if curso_id and curso_id != "undefined" and curso_id != "":
             query += ' AND ce."CursoId" = %s'
