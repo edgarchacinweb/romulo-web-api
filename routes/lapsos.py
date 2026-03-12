@@ -17,8 +17,8 @@ def get_current_lapsos():
     try:
         # Verificar la identidad del usuario (Docentes y Admins pueden consultar)
         payload = Security.verify_token(request.headers)
-        if not payload or payload["role"] not in [Rol.ADMIN.name, Rol.TEACHER.name]:
-            raise Unauthorized()
+        # if not payload or payload["role"] not in [Rol.ADMIN.name, Rol.TEACHER.name]:
+        #     raise Unauthorized()
 
         # Buscar los lapsos del año escolar actual (ordenados del 1 al 3)
         cursor.execute('SELECT "LapsoId","Numero", "FechaInicio", "FechaFin", "AñoEscolar" FROM "Lapso" ORDER BY "Numero" ASC LIMIT 3;')
