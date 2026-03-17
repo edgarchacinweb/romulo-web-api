@@ -207,7 +207,7 @@ def list():
 
         cursor.execute(
             """
-            SELECT dm."DocenteId", m."MateriaId", m."Nombre", m."Nivel" FROM "DocenteMateria" AS dm INNER JOIN "Materia" AS m ON dm."MateriaId"=m."MateriaId";
+            SELECT dm."DocenteId", m."MateriaId", m."Nombre" FROM "DocenteMateria" AS dm INNER JOIN "Materia" AS m ON dm."MateriaId"=m."MateriaId";
             """
         )
 
@@ -231,7 +231,7 @@ def list():
                 "UsuarioId": t[15],
                 "Email": t[16]
             },
-            "Materias": [{"MateriaId": s[1], "Nombre": s[2], "Nivel": s[3]} for s in filter(lambda s: s[0] == t[0], subjects)]
+            "Materias": [{"MateriaId": s[1], "Nombre": s[2]} for s in filter(lambda s: s[0] == t[0], subjects)]
         } for t in teachers]), 200
     except Exception as err:
         conn.rollback()
