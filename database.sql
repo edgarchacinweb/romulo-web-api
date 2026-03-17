@@ -73,6 +73,13 @@ CREATE TABLE "Materia" (
 "FechaCreacion" TIMESTAMP DEFAULT clock_timestamp()
 );
 
+CREATE TABLE "MateriaHorasAcademicas" (
+	"MateriaId" UUID NOT NULL,
+	"CursoId" UUID NOT NULL,
+	"HorasAcademicas" SMALLINT NOT NULL,
+	"FechaCreacion" TIMESTAMP DEFAULT clock_timestamp()
+)
+
 CREATE TABLE "BloqueHorario" (
 "BloqueHorarioId" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
 "HoraInicio" TIME NOT NULL,
@@ -253,6 +260,8 @@ ALTER TABLE "Estudiante" ADD FOREIGN KEY ("RepresentanteId") REFERENCES "DatosPe
 ALTER TABLE "Docente" ADD FOREIGN KEY ("DatosPersonaId") REFERENCES "DatosPersona" ("DatosPersonaId");
 ALTER TABLE "DocenteMateria" ADD FOREIGN KEY ("DocenteId") REFERENCES "Docente" ("DocenteId");
 ALTER TABLE "DocenteMateria" ADD FOREIGN KEY ("MateriaId") REFERENCES "Materia" ("MateriaId");
+ALTER TABLE "MateriaHorasAcademicas" ADD FOREIGN KEY ("MateriaId") REFERENCES "Materia" ("MateriaId");
+ALTER TABLE "MateriaHorasAcademicas" ADD FOREIGN KEY ("CursoId") REFERENCES "Curso" ("CursoId");
 ALTER TABLE "Usuario" ADD FOREIGN KEY ("DatosPersona") REFERENCES "DatosPersona" ("DatosPersonaId") ON DELETE CASCADE;
 ALTER TABLE "Auditoria" ADD FOREIGN KEY ("UsuarioId") REFERENCES "Usuario" ("UsuarioId");
 ALTER TABLE "Curso" ADD CONSTRAINT CK_Curso_Grado CHECK ("Curso"."Grado" >= 1 AND "Curso"."Grado" <= 5);

@@ -34,7 +34,7 @@ def get_current_lapsos():
             lapsos_data.append({
                 "lapso_id": row[0],
                 "lapso": row[1],
-                "fecha_incio": row[2].strftime("%Y-%m-%d"),
+                "fecha_inicio": row[2].strftime("%Y-%m-%d"),
                 "fecha_fin": row[3].strftime("%Y-%m-%d")
             })
 
