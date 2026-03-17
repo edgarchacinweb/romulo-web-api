@@ -230,6 +230,8 @@ CREATE TABLE "PeriodoCargaNota" (
 
 -- Restricciones (Constraints)
 ALTER TABLE "Docente" ADD CONSTRAINT Docente_Minimo_Horas_Academicas CHECK ("Docente"."HorasAcademicas" >= 20);
+ALTER TABLE "MateriaHorasAcademicas" ADD CONSTRAINT MateriaHorasAcademicas_Minimo_Horas_Academicas CHECK ("MateriaHorasAcademicas"."HorasAcademicas" >= 0);
+ALTER TABLE "MateriaHorasAcademicas" ADD CONSTRAINT MateriaHorasAcademicas_Maximo_Horas_Academicas CHECK ("MateriaHorasAcademicas"."HorasAcademicas" <= 4);
 ALTER TABLE "Incidencia" ADD FOREIGN KEY ("DatosPersonaId") REFERENCES "DatosPersona" ("DatosPersonaId");
 ALTER TABLE "Clase" ADD FOREIGN KEY ("CursoId") REFERENCES "Curso" ("CursoId");
 ALTER TABLE "Clase" ADD FOREIGN KEY ("DocenteId") REFERENCES "Docente" ("DocenteId");
