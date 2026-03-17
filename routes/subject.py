@@ -25,13 +25,17 @@ def list_subjects():
         if not payload or payload["role"] != Rol.ADMIN.name and payload["role"] != Rol.TEACHER.name and payload["role"] != Rol.PARENT.name:
             raise Unauthorized()
 
-        cursor.execute("SELECT \"MateriaId\", \"Nombre\", \"FechaCreacion\" FROM \"Materia\" WHERE \"Activo\" = true;")
+        cursor.execute("""
+            SELECT m."MateriaId", m."Nombre", m."FechaCreacion", mh."CursoId", mh."HorasAcademicas" FROM "MateriaHorasAcademicas" AS mh INNER JOIN "Materia" AS m ON m."MateriaId"=mh."MateriaId" WHERE m."Activo"=true;
+        """)
         rows = cursor.fetchall()
 
         return jsonify([{
             "MateriaId": s[0],
             "Nombre": s[1],
-            "Fecha": s[2].strftime("%m/%d/%Y") if s[2] else ""
+            "Fecha": s[2].strftime("%m/%d/%Y") if s[2] else "",
+            "CursoId": s[3],
+            "HorasAcademicas": s[4]
         } for s in rows]), 200
     except Exception as err:
         conn.rollback()
