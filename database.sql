@@ -39,11 +39,6 @@ CREATE TYPE tipo_parentesco AS ENUM (
 'Otro'
 );
 
-CREATE TYPE "nivel" AS ENUM (
-'Secundaria',
-'Bachillerato'
-);
-
 CREATE TABLE "Clase" (
 "ClaseId" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
 "DocenteId" UUID NOT NULL,
@@ -67,7 +62,6 @@ CREATE TABLE "Asistencia" (
 
 CREATE TABLE "Materia" (
 "MateriaId" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-"Nivel" NIVEL NOT NULL,
 "Nombre" VARCHAR(50) NOT NULL,
 "Activo" BOOLEAN DEFAULT TRUE,
 "FechaCreacion" TIMESTAMP DEFAULT clock_timestamp()
@@ -78,7 +72,7 @@ CREATE TABLE "MateriaHorasAcademicas" (
 	"CursoId" UUID NOT NULL,
 	"HorasAcademicas" SMALLINT NOT NULL,
 	"FechaCreacion" TIMESTAMP DEFAULT clock_timestamp()
-)
+);
 
 CREATE TABLE "BloqueHorario" (
 "BloqueHorarioId" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
