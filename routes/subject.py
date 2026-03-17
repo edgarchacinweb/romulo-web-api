@@ -25,14 +25,13 @@ def list_subjects():
         if not payload or payload["role"] != Rol.ADMIN.name and payload["role"] != Rol.TEACHER.name and payload["role"] != Rol.PARENT.name:
             raise Unauthorized()
 
-        cursor.execute("SELECT * FROM \"Materia\" WHERE \"Activo\" = true;")
+        cursor.execute("SELECT \"MateriaId\", \"Nombre\", \"FechaCreacion\" FROM \"Materia\" WHERE \"Activo\" = true;")
         rows = cursor.fetchall()
 
         return jsonify([{
             "MateriaId": s[0],
-            "Nivel": s[1],
-            "Nombre": s[2],
-            "Fecha": s[4].strftime("%m/%d/%Y") if s[4] else ""
+            "Nombre": s[1],
+            "Fecha": s[2].strftime("%m/%d/%Y") if s[2] else ""
         } for s in rows]), 200
     except Exception as err:
         conn.rollback()
@@ -95,20 +94,42 @@ def create_subject():
 
         data = request.get_json()
 
-        if "Nivel" not in data:
-            raise MissingField("Debes indicar si la materia pertenece a un nivel de secundaria o de bachillerato")
-        elif data["Nivel"] not in ["Secundaria", "Bachillerato"]:
-            raise BadRequest("El nivel debe ser 'Secundaria' o 'Bachillerato'")
+        if not data["HorasAcademicas"] or type(data["HorasAcademicas"]) != list:
+            raise BadRequest("Las horas academicas deben ser un array")
         elif "Nombre" not in data:
             raise MissingField("Debes indicar el nombre de la materia")
         elif len(data["Nombre"]) < 3:
             raise InsertEntityError("El nombre de la materia debe tener al menos 3 caracteres")
 
-        cursor.execute("INSERT INTO \"Materia\" (\"Nivel\", \"Nombre\") VALUES (%s, %s) RETURNING \"MateriaId\";", (data["Nivel"], data["Nombre"]))
-        conn.commit()
-        subject_id = cursor.fetchone()[0]
+        # Obtener todos los cursos academicos
+        cursor.execute("""SELECT "CursoId" FROM "Curso" ORDER BY "Grado" ASC;""")
+        rows = cursor.fetchall()
 
-        return jsonify({"MateriaId": subject_id}), 201
+        sql = """
+        INSERT INTO "Materia" ("Nombre") VALUES (%s) RETURNING "MateriaId";
+        """
+
+        cursor.execute(sql, (data["Nombre"],))  
+        materia_id = cursor.fetchone()[0]
+        
+        hoursData = []
+        for i in range(0, 5):
+            hoursData.append(rows[i][0])
+            hoursData.append(materia_id)
+            hoursData.append(str(data["HorasAcademicas"][i]))
+        
+        sql = """
+                INSERT INTO "MateriaHorasAcademicas" ("CursoId", "MateriaId", "HorasAcademicas") VALUES (%s, %s, %s);
+                INSERT INTO "MateriaHorasAcademicas" ("CursoId", "MateriaId", "HorasAcademicas") VALUES (%s, %s, %s);
+                INSERT INTO "MateriaHorasAcademicas" ("CursoId", "MateriaId", "HorasAcademicas") VALUES (%s, %s, %s);
+                INSERT INTO "MateriaHorasAcademicas" ("CursoId", "MateriaId", "HorasAcademicas") VALUES (%s, %s, %s);
+                INSERT INTO "MateriaHorasAcademicas" ("CursoId", "MateriaId", "HorasAcademicas") VALUES (%s, %s, %s);
+        """
+
+        cursor.execute(sql, tuple(hoursData))
+        conn.commit()
+
+        return jsonify({"MateriaId": materia_id}), 201
     except Exception as err:
         conn.rollback()
         ex = exception_handler(err)
