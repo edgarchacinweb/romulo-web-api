@@ -162,6 +162,41 @@ def update():
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
 
+@reg_term_bp.route("/registration/close/<string:id>", methods=["PATCH"])
+def close_registration(id):
+    try:
+        payload = Security.verify_token(request.headers)
+        if not payload or payload["role"] != Rol.ADMIN.name:
+            raise Unauthorized()
+        if not Validations.is_uuid(id):
+            raise InvalidId("El ID es inválido")
+
+        connection = Connection().get_connection()
+        cursor = connection.cursor()
+        
+        sql = "UPDATE \"PeriodoInscripcion\" SET \"Activo\" = FALSE WHERE \"PeriodoInscripcion\" = %s"
+        cursor.execute(sql, (id,))
+        affected = cursor.rowcount
+        
+        if affected == 0:
+            connection.rollback()
+            cursor.close()
+            raise EntityNotFound("No se encontró el período de inscripción o ya está cerrado")
+            
+        connection.commit()
+        cursor.close()
+        
+        AuditoriaRep().create(Auditoria({
+            "Accion": "Actualización",
+            "Descripcion": "Período de inscripción cerrado manualmente"
+        }))
+        
+        return jsonify({"message": "Período cerrado exitosamente"}), 200
+    except Exception as err:
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+
+
 # --- Rutas de Conteo para el Dashboard ---
 
 @reg_term_bp.route("/registration/count/students", methods=["GET"])

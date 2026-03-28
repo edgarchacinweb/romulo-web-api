@@ -9,6 +9,7 @@ class PeriodoInscripcion:
         self.start: date = None
         self.end: date = None
         self.fecha_creacion: date = None
+        self.activo: bool = None
         self.periodo_escolar: PeriodoEscolar = None
         
         if len(args) > 1:
@@ -23,6 +24,7 @@ class PeriodoInscripcion:
             if "Inicio" in dp_dict: self.start = str_to_date(dp_dict["Inicio"])
             if "Fin" in dp_dict: self.end = str_to_date(dp_dict["Fin"])
             if "FechaCreacion" in dp_dict: self.fecha_creacion = str_to_date(dp_dict["FechaCreacion"])
+            if "Activo" in dp_dict: self.activo = dp_dict["Activo"]
             if "PeriodoEscolar" in dp_dict: self.periodo_escolar = dp_dict["PeriodoEscolar"]
         else:
             dp_tuple = args[0]
@@ -38,6 +40,7 @@ class PeriodoInscripcion:
         if self.start: reg_dict["Inicio"] = self.start.strftime("%Y-%m-%d")
         if self.end: reg_dict["Fin"] = self.end.strftime("%Y-%m-%d")
         if self.fecha_creacion: reg_dict["FechaCreacion"] = self.fecha_creacion.strftime("%Y-%m-%d, %I:%M:%S %p")
+        if self.activo is not None: reg_dict["Activo"] = self.activo
         if self.periodo_escolar: reg_dict["PeriodoEscolar"] = self.periodo_escolar.to_dict()
         return reg_dict
     
