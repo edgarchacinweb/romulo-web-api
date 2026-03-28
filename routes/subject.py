@@ -61,11 +61,13 @@ def teacher_subjects():
         # d."DatosPersonaId" en la tabla Docente
         # u."DatosPersona" en la tabla Usuario
         query = """
-            SELECT DISTINCT m."MateriaId", m."Nivel", m."Nombre", m."Activo", m."FechaCreacion" 
+            SELECT DISTINCT m."MateriaId", m."Nombre" AS "MateriaNombre", cu."Grado", cu."CursoId"
             FROM "Materia" m
             INNER JOIN "DocenteMateria" dm ON m."MateriaId" = dm."MateriaId"
             INNER JOIN "Docente" d ON dm."DocenteId" = d."DocenteId"
             INNER JOIN "Usuario" u ON d."DatosPersonaId" = u."DatosPersona"
+            INNER JOIN "MateriaHorasAcademicas" mh ON m."MateriaId" = mh."MateriaId"
+            INNER JOIN "Curso" cu ON mh."CursoId" = cu."CursoId"
             WHERE m."Activo" = true AND u."UsuarioId" = %s;
         """
         
@@ -74,9 +76,9 @@ def teacher_subjects():
 
         return jsonify([{
             "MateriaId": s[0],
-            "Nivel": s[1],
-            "Nombre": s[2],
-            "Fecha": s[4].strftime("%m/%d/%Y") if s[4] else ""
+            "Nombre": s[1],
+            "Grado": s[2],
+            "CursoId": s[3]
         } for s in rows]), 200
     except Exception as err:
         conn.rollback()
