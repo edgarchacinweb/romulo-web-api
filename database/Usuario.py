@@ -123,7 +123,7 @@ class UsuarioRep(Repository):
             "DatosPersonaId": u[4],
             "FechaCreacion": u[6],
             "DatosPersona": DatosPersona({
-                "DatosPersonaId": u[7],
+                "id": u[7],
                 "Nombre": u[8],
                 "Apellido": u[9],
                 "Sexo": u[10],

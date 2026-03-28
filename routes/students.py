@@ -86,7 +86,8 @@ def check_period():
 def create():
     conn, cursor = get_db()
     try:
-        if not Security.verify_token(request.headers): 
+        payload = Security.verify_token(request.headers)
+        if not payload: 
             return jsonify({"message": "No autorizado"}), 401
 
         data, files = request.form, request.files
@@ -115,6 +116,12 @@ def create():
         val_curso_id = str(data["IdCurso"]).strip()
         cursor.execute('SELECT "PeriodoEscolarId" FROM "PeriodoInscripcion" WHERE "Activo" = TRUE LIMIT 1;')
         periodo_row = cursor.fetchone()
+        
+        is_admin = payload.get("role") == Rol.ADMIN.name
+        if not periodo_row and is_admin:
+            cursor.execute('SELECT "PeriodoEscolarId" FROM "PeriodoEscolar" ORDER BY "PeriodoEscolarId" DESC LIMIT 1;')
+            periodo_row = cursor.fetchone()
+            
         if not periodo_row: raise Exception("No hay un periodo escolar activo para inscribir.")
         periodo_id = periodo_row[0]
         seccion_asignada = obtener_seccion_disponible(cursor, val_curso_id, periodo_id)
