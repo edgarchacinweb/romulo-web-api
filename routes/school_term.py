@@ -213,3 +213,93 @@ def get_all():
     except Exception as err:
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
+
+@school_term_bp.route("/school_term/<string:id>/end_date", methods=["PATCH"])
+def update_end_date(id: str):
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+    try:
+        payload = Security.verify_token(request.headers)
+        if not payload or payload["role"] != Rol.ADMIN.name:
+            raise Unauthorized()
+
+        if not Validations.is_uuid(id):
+            raise InvalidId("El identificador del período escolar es inválido")
+
+        data = request.get_json()
+        if not data or not "FechaFin" in data:
+            raise MissingEntityData("No se recibió la nueva Fecha de Fin")
+        
+        nueva_fecha_fin = data["FechaFin"]
+        if not Validations.is_date(nueva_fecha_fin):
+            raise ValidationError("El formato de la nueva fecha de fin es inválido")
+
+        cursor.execute(
+            """UPDATE "PeriodoEscolar" SET "FechaFin" = %s WHERE "PeriodoEscolarId" = %s RETURNING "FechaFin";""",
+            (nueva_fecha_fin, id)
+        )
+        if cursor.rowcount == 0:
+            raise EntityNotFound("No se encontró el período escolar")
+
+        conn.commit()
+
+        AuditoriaRep().create(Auditoria({
+            "Accion": "Actualizar",
+            "Descripcion": f"Fecha de fin del período escolar {id} actualizada a {nueva_fecha_fin}",
+            "Usuario": Usuario({
+                "id": payload["id"]
+            })
+        }))
+    
+        return jsonify({"message": "Fecha de fin actualizada correctamente", "FechaFin": nueva_fecha_fin}), 200
+    except Exception as err:
+        conn.rollback()
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
+
+@school_term_bp.route("/school_term/<string:id>/estadisticas", methods=["GET"])
+def get_estadisticas(id: str):
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+    try:
+        payload = Security.verify_token(request.headers)
+        if not payload or payload["role"] != Rol.ADMIN.name:
+            raise Unauthorized()
+
+        if not Validations.is_uuid(id):
+            raise InvalidId("El identificador del período escolar es inválido")
+
+        cursor.execute('SELECT COUNT(DISTINCT "EstudianteId") FROM "CursoEstudiante" WHERE "PeriodoEscolarId" = %s', (id,))
+        res = cursor.fetchone()
+        total_estudiantes = res[0] if res else 0
+
+        cursor.execute('SELECT COUNT(DISTINCT "DocenteId") FROM "Clase" WHERE "PeriodoEscolarId" = %s', (id,))
+        res = cursor.fetchone()
+        total_docentes = res[0] if res else 0
+
+        cursor.execute('SELECT COUNT("ClaseId") FROM "Clase" WHERE "PeriodoEscolarId" = %s', (id,))
+        res = cursor.fetchone()
+        total_clases = res[0] if res else 0
+
+        term = rep.get(id)
+        current_date = datetime.now()
+        expiration_date = datetime.strptime(f"{term.fecha_fin} 23:59:59", "%Y-%m-%d %H:%M:%S")
+        estado = "Activo" if current_date <= expiration_date else "Finalizado"
+
+        nombre_periodo = f"{str(term.fecha_inicio).split('-')[0]} - {str(term.fecha_fin).split('-')[0]}"
+
+        return jsonify({
+            "TotalEstudiantes": total_estudiantes,
+            "TotalDocentes": total_docentes,
+            "TotalClases": total_clases,
+            "Estado": estado,
+            "NombrePeriodo": nombre_periodo
+        }), 200
+
+    except Exception as err:
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
