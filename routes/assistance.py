@@ -42,15 +42,17 @@ def create():
         justificaciones = data.get("Justificacion", [""] * len(estudiantes))
         clase_id = data["ClaseId"]
 
-        count = 0
+        values = []
         for i in range(len(estudiantes)):
             asistencia_id = str(uuid.uuid4())
-            
-            cursor.execute("""
+            values.append((asistencia_id, estudiantes[i], clase_id, asistencias[i], justificaciones[i], fecha))
+
+        if values:
+            cursor.executemany("""
                 INSERT INTO "Asistencia" ("AsistenciaId", "EstudianteId", "ClaseId", "Activo", "Justificacion", "FechaCreacion")
                 VALUES (%s::uuid, %s::uuid, %s::uuid, %s, %s, %s::timestamp)
-            """, (asistencia_id, estudiantes[i], clase_id, asistencias[i], justificaciones[i], fecha))
-            count += 1
+            """, values)
+            count = len(values)
 
         if count == 0:
             raise ValidationError(f"No se recibieron estudiantes para registrar.")
@@ -59,7 +61,7 @@ def create():
 
         AuditoriaRep().create(Auditoria({
             "Accion": "Registro",
-            "Descripcion": f"Asistencias registradas para la sección vinculada a la ClaseId: {clase_id} en la fecha {fecha}",
+            "Descripcion": f"Asistencias registradas masivamente ({count}) para la sección vinculada a la ClaseId: {clase_id} en la fecha {fecha}",
             "Usuario": Usuario({"id": payload["id"]})
         }))
 
@@ -169,7 +171,7 @@ def get_class_students():
                 conn.commit()
             except Exception as e:
                 conn.rollback()
-                clase_id = "123e4567-e89b-12d3-a456-426614174000"
+                raise Exception("No se pudo inicializar la clase para esta sección. Por favor, consulte con administración.")
 
         cursor.execute("""
             SELECT "EstudianteId", "Activo", "Justificacion"
@@ -459,6 +461,41 @@ def get_teacher_monthly_stats():
             "total": total,
             "presentes": presentes,
             "porcentaje": porcentaje
+        }), 200
+
+    except Exception as err:
+        if conn: conn.rollback()
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        if cursor: cursor.close()
+
+# --- NUEVA RUTA: DASHBOARD GLOBAL DIARIO PARA ADMIN ---
+@assistance_bp.route("/assistance/admin/dashboard_hoy", methods=["GET"])
+def get_admin_dashboard_today():
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+    try:
+        payload = Security.verify_token(request.headers)
+        if not payload or payload["role"] != Rol.ADMIN.name:
+            raise Unauthorized("Solo los administradores pueden consultar el dashboard global.")
+
+        # Obtenemos estadísticas del día de hoy en todo el liceo
+        cursor.execute("""
+            SELECT 
+                COUNT(*) AS total_evaluados,
+                SUM(CASE WHEN "Activo" = true THEN 1 ELSE 0 END) AS presentes,
+                SUM(CASE WHEN "Activo" = false THEN 1 ELSE 0 END) AS ausentes
+            FROM "Asistencia"
+            WHERE DATE("FechaCreacion") = CURRENT_DATE
+        """)
+        
+        row = cursor.fetchone()
+        
+        return jsonify({
+            "total_evaluados": row[0] if row and row[0] else 0,
+            "presentes": int(row[1]) if row and (row[1] is not None) else 0,
+            "ausentes": int(row[2]) if row and (row[2] is not None) else 0
         }), 200
 
     except Exception as err:
