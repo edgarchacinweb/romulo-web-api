@@ -43,11 +43,28 @@ def validar_cedula_estudiante(cedula_str):
 # --- FUNCIÓN AUXILIAR: VALIDACIÓN DE FECHA DE NACIMIENTO ---
 def validar_fecha_nacimiento(fecha_str):
     try:
-        fecha = datetime.strptime(fecha_str, "%d/%m/%Y")
-        if fecha.year < 2008 or fecha.year > 2015:
-            raise Exception("El año de nacimiento del estudiante debe estar estrictamente entre 2008 y 2015.")
+        return datetime.strptime(fecha_str, "%d/%m/%Y")
     except ValueError:
         raise Exception("Formato de fecha de nacimiento inválido.")
+
+# --- FUNCIÓN AUXILIAR: VALIDACIÓN DE EDAD POR GRADO ---
+def validar_edad_grado(fecha_dt, grado):
+    today = datetime.today()
+    edad = today.year - fecha_dt.year - ((today.month, today.day) < (fecha_dt.month, fecha_dt.day))
+    
+    rangos = {
+        1: (11, 13),
+        2: (13, 14),
+        3: (14, 15),
+        4: (15, 16),
+        5: (16, 18)
+    }
+    
+    if grado in rangos:
+        min_e, max_e = rangos[grado]
+        if edad < min_e or edad > max_e:
+            grado_str = {1: "1er Año", 2: "2do Año", 3: "3er Año", 4: "4to Año", 5: "5to Año"}[grado]
+            raise Exception(f"El estudiante tiene {edad} años, lo cual no cumple con el rango permitido ({min_e} - {max_e} años) para inscribirse en {grado_str}.")
 
 # --- FUNCIONES DE ASIGNACIÓN DINÁMICA DE SECCIÓN ---
 def calcular_distribucion_secciones(total_estudiantes):
@@ -137,9 +154,16 @@ def create():
         if "Cedula" in data: validar_cedula_estudiante(data["Cedula"])
 
         if "FechaNacimiento" in data:
-            validar_fecha_nacimiento(data["FechaNacimiento"])
+            fecha_dt = validar_fecha_nacimiento(data["FechaNacimiento"])
         else:
             raise Exception("La fecha de nacimiento es requerida.")
+
+        # Obtener Grado del curso para validar edad
+        val_curso_id = str(data["IdCurso"]).strip()
+        cursor.execute('SELECT "Grado" FROM "Curso" WHERE "CursoId" = %s', (val_curso_id,))
+        curso_row = cursor.fetchone()
+        if not curso_row: raise Exception("El curso seleccionado no existe.")
+        validar_edad_grado(fecha_dt, curso_row[0])
 
         cursor.execute("""INSERT INTO "DatosPersona" ("Nombre", "Apellido", "Sexo", "Cedula", "Direccion") 
                            VALUES (%s,%s,%s,%s,%s) RETURNING "DatosPersonaId";""",
@@ -389,7 +413,15 @@ def submit_reinscription(id):
         if "Nombre" in data: validar_solo_letras(data["Nombre"], "Nombre")
         if "Apellido" in data: validar_solo_letras(data["Apellido"], "Apellido")
         if "Cedula" in data: validar_cedula_estudiante(data["Cedula"])
-        if "FechaNacimiento" in data: validar_fecha_nacimiento(data["FechaNacimiento"])
+        if "FechaNacimiento" in data: 
+            fecha_dt = validar_fecha_nacimiento(data["FechaNacimiento"])
+            
+            # Obtener Grado del curso para validar edad
+            val_curso_id = str(data["IdCurso"]).strip()
+            cursor.execute('SELECT "Grado" FROM "Curso" WHERE "CursoId" = %s', (val_curso_id,))
+            curso_row = cursor.fetchone()
+            if not curso_row: raise Exception("El curso seleccionado no existe.")
+            validar_edad_grado(fecha_dt, curso_row[0])
 
         # 1. Actualizar DatosPersona
         cursor.execute('SELECT "DatosPersonaId" FROM "Estudiante" WHERE "EstudianteId" = %s', (id,))

@@ -1,5 +1,19 @@
 # Changelog de Cambios y Modificaciones
 
+## [2026-04-02] Validación de Edad por Grado
+
+### Añadido
+- **Frontend (UX)**: Implementación de validación en tiempo real en `studentsregister.js` para los campos de Fecha de Nacimiento y Grado.
+- **Feedback Visual**: Mensaje de advertencia dinámico en el formulario de inscripción que alerta sobre inconsistencias de edad/grado y bloquea el botón de envío hasta que se corrija.
+- **Backend**: Nueva función auxiliar `validar_edad_grado` que implementa reglas de negocio estrictas para la inscripción.
+- **Backend**: Rangos de edad configurados: 1er Año (11-13), 2do Año (13-14), 3er Año (14-15), 4to Año (15-16), 5to Año (16-18).
+- **Backend/API**: Validación de edad integrada en los endpoints `/students/create` y `/students/submit_reinscription/<id>`.
+
+### Modificado
+- **HTML**: Se eliminaron los límites de años estáticos (2008-2015) en el selector de fecha del formulario de inscripción para permitir una validación dinámica y adaptable.
+- **Backend/Utils**: Función `validar_fecha_nacimiento`: Se eliminó la restricción de años fijos, convirtiéndola en una función genérica de validación de formato.
+- Los procesos de registro y reinscripción ahora consultan dinámicamente el grado asignado al curso para aplicar la validación de edad correspondiente antes de cualquier operación en la base de datos.
+
 ## [2026-04-01] Refactorización de Asignación de Secciones
 
 ### Añadido
