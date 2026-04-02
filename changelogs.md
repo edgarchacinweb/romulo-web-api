@@ -1,5 +1,11 @@
 # Changelog de Cambios y Modificaciones
 
+## [2026-04-02] Corrección en Estadísticas de Docentes
+
+### Modificado
+- **Backend**: Se corrigió el cálculo de `TotalDocentes` en la ruta `/school_term/<id>/estadisticas`. Ahora cuenta todos los docentes activos en el sistema en lugar de filtrar solo por aquellos con clases asignadas en el período.
+
+
 ## [2026-04-02] Validación de Edad por Grado
 
 ### Añadido

@@ -275,7 +275,7 @@ def get_estadisticas(id: str):
         res = cursor.fetchone()
         total_estudiantes = res[0] if res else 0
 
-        cursor.execute('SELECT COUNT(DISTINCT "DocenteId") FROM "Clase" WHERE "PeriodoEscolarId" = %s', (id,))
+        cursor.execute('SELECT COUNT(*) FROM "Docente" WHERE "Activo" = TRUE')
         res = cursor.fetchone()
         total_docentes = res[0] if res else 0
 
