@@ -1,5 +1,12 @@
 # Changelog de Cambios y Modificaciones
 
+## [2026-04-06] Refactor: Período escolar automático y de solo lectura en Horarios
+
+### Modificado
+- **Backend (API)**: Se verificó la consistencia del endpoint `/school_term/get` para devolver el período escolar marcado como activo (`Activo = TRUE`).
+- **Frontend (HTML)**: En la vista de gestión de horarios (`app/admin/horarios/index.html`), se reemplazó el elemento `<select>` de "Período Escolar" por un campo de texto de solo lectura (`readonly disabled`) y un campo oculto (`hidden`) para prevenir la selección manual errónea de períodos pasados.
+- **Frontend (JS)**: Se actualizó `src/scripts/schedulemanager.js` para cargar automáticamente el período escolar activo al iniciar la página. Se eliminó la lógica de escucha de cambios (`change event`) en el filtro de período, forzando al sistema a trabajar siempre sobre el ciclo escolar vigente y evitar inconsistencias lógicas en la asignación de materias y docentes.
+
 ## [2026-04-06] Reparación del Módulo de Auditorías
 
 ### Solucionado
