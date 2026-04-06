@@ -52,6 +52,8 @@ class Usuario():
                 self.DatosPersonaId = user[4]
                 if len(user) == 11:
                     self.DatosPersona = DatosPersona(user[5], user[6], user[7], user[8], user[9], user[10])
+                elif len(user) >= 15:
+                    self.DatosPersona = DatosPersona(user[7], user[8], user[9], user[10], user[11], user[12], user[13], user[14])
 
         self._validate()
 

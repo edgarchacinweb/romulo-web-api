@@ -128,7 +128,9 @@ class UsuarioRep(Repository):
                 "Apellido": u[9],
                 "Sexo": u[10],
                 "Cedula": u[11],
-                "Telefono": u[12]
+                "Telefono": u[12],
+                "Direccion": u[13],
+                "Ocupacion": u[14]
             })
         }) for u in users]
     
