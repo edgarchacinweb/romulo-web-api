@@ -8,6 +8,8 @@
 - **Frontend**: Se reparó el filtrado en cliente (`src/scripts/auditorymanager.js`); el conteo de "Acciones Hoy" ahora usa el prefijo `YYYY-MM-DD` de la fecha ISO evitando validaciones lógicas fallidas de compatibilidad, y previniendo posibles errores de variables.
 - **Frontend**: La tabla principal ahora interpreta y formatea correctamente las fechas (`formattedDate`), previniendo caídas cuando la API devuelve los registros y mostrando finalmente los datos visuales.
 - **Frontend**: **Fix: PDF en blanco en exportación de auditorías**. Se corrigió un error estructural donde el contenedor de reporte (`#print`) estaba anidado dentro de un elemento padre oculto durante la impresión. Se reestructuró el HTML para independizar el contenedor de impresión y se simplificó la lógica de JavaScript para delegar la visibilidad al motor de CSS mediante `@media print`.
+- **Frontend**: **Feat: Paginación y botón 'Ver todo' en tabla de auditorías**. Se implementó un sistema de paginación por bloques de 50 registros para mejorar el rendimiento y la legibilidad de la vista. Se incluyeron controles de navegación (Anterior/Siguiente), indicador de rango dinámico y un modo de "Ver todo" que permite alternar entre la vista paginada y el listado completo original.
+
 
 
 ## [2026-04-02] Corrección en Estadísticas de Docentes
