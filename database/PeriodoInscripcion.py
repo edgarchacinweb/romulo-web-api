@@ -27,7 +27,7 @@ class PeriodoInscripcionRep(Repository):
 
     def get(self, id):
         cursor = self.db_connection.cursor()
-        sql = "SELECT * FROM \"PeriodoInscripcion\" WHERE \"PeriodoInscripcionId\"=%s"
+        sql = "SELECT * FROM \"PeriodoInscripcion\" WHERE \"PeriodoInscripcion\"=%s"
         self.logger.debug(sql, "SQL")
         cursor.execute(sql, (id,))
         reg = cursor.fetchone()
@@ -84,8 +84,9 @@ class PeriodoInscripcionRep(Repository):
                 sql += f" \"{key}\"=%s,"
                 values.append(value)
 
-        sql = sql[:-1] + f" WHERE \"PeriodoInscripcion\"='{model.id}'"
+        sql = sql[:-1] + f" WHERE \"PeriodoInscripcion\"=%s"
         self.logger.info(sql)
+        values.append(model.id)
         cursor.execute(sql, tuple(values))
         affected = cursor.rowcount
         self.logger.debug(f"Affected {affected} rows")

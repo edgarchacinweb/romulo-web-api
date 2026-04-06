@@ -9,6 +9,8 @@
 - **Frontend**: La tabla principal ahora interpreta y formatea correctamente las fechas (`formattedDate`), previniendo caídas cuando la API devuelve los registros y mostrando finalmente los datos visuales.
 - **Frontend**: **Fix: PDF en blanco en exportación de auditorías**. Se corrigió un error estructural donde el contenedor de reporte (`#print`) estaba anidado dentro de un elemento padre oculto durante la impresión. Se reestructuró el HTML para independizar el contenedor de impresión y se simplificó la lógica de JavaScript para delegar la visibilidad al motor de CSS mediante `@media print`.
 - **Frontend**: **Feat: Paginación y botón 'Ver todo' en tabla de auditorías**. Se implementó un sistema de paginación por bloques de 50 registros para mejorar el rendimiento y la legibilidad de la vista. Se incluyeron controles de navegación (Anterior/Siguiente), indicador de rango dinámico y un modo de "Ver todo" que permite alternar entre la vista paginada y el listado completo original.
+- **Frontend/Backend**: **Feat: Edición de Fecha de Fin en Período de Inscripción**. Se añadió la funcionalidad para corregir la fecha de finalización de los períodos de inscripción mediante edición inline directamente en la tabla. Se corrigieron inconsistencias en el nombrado de columnas de la base de datos en el backend para permitir actualizaciones seguras.
+
 
 
 
