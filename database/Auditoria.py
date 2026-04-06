@@ -30,7 +30,7 @@ class AuditoriaRep():
     def filter(self, model: Auditoria, date_from, date_to):
         try:
             cursor = self.db_connection.cursor()
-            sql = "SELECT * FROM \"Auditoria\" AS a INNER JOIN \"Usuario\" AS u ON a.\"UsuarioId\" = u.\"UsuarioId\""
+            sql = "SELECT a.\"AuditoriaId\", a.\"Descripcion\", a.\"Accion\", a.\"FechaCreacion\", u.\"UsuarioId\", u.\"Email\", u.\"Rol\" FROM \"Auditoria\" AS a INNER JOIN \"Usuario\" AS u ON a.\"UsuarioId\" = u.\"UsuarioId\""
             data = list()
             values = list()
 
@@ -55,13 +55,13 @@ class AuditoriaRep():
 
             return [Auditoria({
                 "id": record[0],
-                "Descripcion": record[2],
-                "Accion": record[3],
-                "Fecha": record[4],
+                "Descripcion": record[1],
+                "Accion": record[2],
+                "Fecha": record[3],
                 "Usuario": Usuario({
-                    "id": record[5],
-                    "Email": record[6],
-                    "Rol": Rol(record[8]),
+                    "id": record[4],
+                    "Email": record[5],
+                    "Rol": Rol(record[6]),
                 })
             }) for record in records]
             

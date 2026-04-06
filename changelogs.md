@@ -1,5 +1,15 @@
 # Changelog de Cambios y Modificaciones
 
+## [2026-04-06] Reparación del Módulo de Auditorías
+
+### Solucionado
+- **Backend**: Se corrigió y robusteció la consulta SQL en el método `filter` de `AuditoriaRep` (en `database/Auditoria.py`), cambiando de un `SELECT *` inseguro a un mapeo explícito de columnas de BD para evitar desajustes posicionales en la serialización de registros ante cambios de esquema.
+- **Backend**: Se modificó `models/Auditoria.py` para formatear la fecha generada al formato estándar ISO 8601 (`isoformat()`), logrando así que el frontend pueda parsearla íntegramente, incluyendo la hora específica de cada acción y sin que el frontend pierda su trazabilidad en el objeto JS `Date`.
+- **Frontend**: Se reparó el filtrado en cliente (`src/scripts/auditorymanager.js`); el conteo de "Acciones Hoy" ahora usa el prefijo `YYYY-MM-DD` de la fecha ISO evitando validaciones lógicas fallidas de compatibilidad, y previniendo posibles errores de variables.
+- **Frontend**: La tabla principal ahora interpreta y formatea correctamente las fechas (`formattedDate`), previniendo caídas cuando la API devuelve los registros y mostrando finalmente los datos visuales.
+- **Frontend**: **Fix: PDF en blanco en exportación de auditorías**. Se corrigió un error estructural donde el contenedor de reporte (`#print`) estaba anidado dentro de un elemento padre oculto durante la impresión. Se reestructuró el HTML para independizar el contenedor de impresión y se simplificó la lógica de JavaScript para delegar la visibilidad al motor de CSS mediante `@media print`.
+
+
 ## [2026-04-02] Corrección en Estadísticas de Docentes
 
 ### Modificado

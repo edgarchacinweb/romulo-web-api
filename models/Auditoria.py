@@ -38,7 +38,11 @@ class Auditoria():
         if self.usuario: auditory["Usuario"] = self.usuario.to_dict()
         if self.descripcion: auditory["Descripcion"] = self.descripcion
         if self.accion: auditory["Accion"] = self.accion
-        if self.fecha: auditory["Fecha"] = date_to_str(self.fecha)
+        if self.fecha: 
+            try:
+                auditory["Fecha"] = self.fecha.isoformat()
+            except AttributeError:
+                auditory["Fecha"] = str(self.fecha)
         return auditory
 
     def to_tuple(self):
