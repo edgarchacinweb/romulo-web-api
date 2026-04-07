@@ -262,7 +262,6 @@ ALTER TABLE "Usuario" ADD FOREIGN KEY ("DatosPersona") REFERENCES "DatosPersona"
 ALTER TABLE "Auditoria" ADD FOREIGN KEY ("UsuarioId") REFERENCES "Usuario" ("UsuarioId");
 ALTER TABLE "Curso" ADD CONSTRAINT CK_Curso_Grado CHECK ("Curso"."Grado" >= 1 AND "Curso"."Grado" <= 5);
 ALTER TABLE "Nota" ADD CONSTRAINT CK_Nota_Ponderacion CHECK ("Nota"."Ponderacion" >= 0 AND "Nota"."Ponderacion" <= 20);
-ALTER TABLE "Nota" ADD CONSTRAINT CK_Nota_Lapso CHECK ("Nota"."Lapso" >= 1 AND "Nota"."Lapso" <= 3);
 ALTER TABLE "PeriodoCargaNota" ADD FOREIGN KEY ("PeriodoEscolarId") REFERENCES "PeriodoEscolar" ("PeriodoEscolarId");
 ALTER TABLE "PeriodoCargaNota" ADD FOREIGN KEY ("LapsoId") REFERENCES "Lapso" ("LapsoId");
 
