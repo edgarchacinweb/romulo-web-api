@@ -130,12 +130,18 @@ def create_subject():
         
         hoursData = []
         insert_queries = []
+        horas_por_curso = []
         for i in range(len(data["HorasAcademicas"])):
             if i < len(rows):
-                horas = int(data["HorasAcademicas"][i])
+                val = data["HorasAcademicas"][i]
+                horas = int(val) if val is not None else 0
                 if horas > 0:
                     hoursData.extend([rows[i][0], materia_id, horas])
                     insert_queries.append('(%s, %s, %s)')
+                    horas_por_curso.append({
+                        "Grado": rows[i][1],
+                        "HorasAcademicas": horas
+                    })
         
         if insert_queries:
             sql_insert = f"""
@@ -146,7 +152,17 @@ def create_subject():
 
         conn.commit()
 
-        return jsonify({"MateriaId": materia_id}), 201
+        cursor.execute('SELECT "FechaCreacion" FROM "Materia" WHERE "MateriaId" = %s', (materia_id,))
+        fecha_creacion = cursor.fetchone()[0]
+
+        response_data = {
+            "MateriaId": materia_id,
+            "Nombre": data["Nombre"],
+            "Fecha": fecha_creacion.strftime("%m/%d/%Y") if fecha_creacion else "",
+            "HorasPorCurso": horas_por_curso
+        }
+
+        return jsonify(response_data), 201
     except Exception as err:
         conn.rollback()
         ex = exception_handler(err)
