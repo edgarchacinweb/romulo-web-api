@@ -401,42 +401,44 @@ def update(teacher_id):
             (data["Horas"], data["Activo"], teacher_id)
         )
 
-        # Deshabilitar todas las materias que no aparezcan en la lista de materias
-        cursor.execute(
-            """
-            UPDATE "DocenteMateria" SET "Activo"=FALSE WHERE "DocenteId"=%s AND "MateriaId" NOT IN %s;
-            """,
-            (teacher_id, tuple(data["Materias"]))
-        )
-
-        # Habilitar las materias que aparezcan en la lista de materias
-        cursor.execute(
-            """
-            UPDATE "DocenteMateria" SET "Activo"=TRUE WHERE "DocenteId"=%s AND "MateriaId" IN %s;
-            """,
-            (teacher_id, tuple(data["Materias"]))
-        )
+        # Eliminar las materias que no estén en la nueva lista
+        if data["Materias"]:
+            cursor.execute(
+                """
+                DELETE FROM "DocenteMateria" WHERE "DocenteId"=%s AND "MateriaId" NOT IN %s;
+                """,
+                (teacher_id, tuple(data["Materias"]))
+            )
+        else:
+            cursor.execute(
+                """
+                DELETE FROM "DocenteMateria" WHERE "DocenteId"=%s;
+                """,
+                (teacher_id,)
+            )
 
         # Agregar las materias que aparecen en la lista de materias pero no existen en la tabla DocenteMateria
         cursor.execute(
             """
-            SELECT "DocenteId", "MateriaId" FROM "DocenteMateria";
-            """
+            SELECT "MateriaId" FROM "DocenteMateria" WHERE "DocenteId"=%s;
+            """,
+            (teacher_id,)
         )
 
-        materias_existentes = cursor.fetchall()
+        materias_existentes = [row[0] for row in cursor.fetchall()]
         materias_a_agregar = []
 
         for materia in data["Materias"]:
-            if (teacher_id, materia) not in materias_existentes:
+            if materia not in materias_existentes:
                 materias_a_agregar.append((teacher_id, materia))
 
-        cursor.executemany(
-            """
-            INSERT INTO "DocenteMateria" ("DocenteId", "MateriaId") VALUES (%s, %s);
-            """,
-            materias_a_agregar
-        )
+        if materias_a_agregar:
+            cursor.executemany(
+                """
+                INSERT INTO "DocenteMateria" ("DocenteId", "MateriaId") VALUES (%s, %s);
+                """,
+                materias_a_agregar
+            )
 
         # Actualizar el correo electrónico
         cursor.execute(
@@ -449,7 +451,7 @@ def update(teacher_id):
         # Registrar en auditorías
         cursor.execute(
             """
-            INSERT INTO "Auditoria" ("Accion", "Descripcion", "Usuario") VALUES (%s, %s, %s);
+            INSERT INTO "Auditoria" ("Accion", "Descripcion", "UsuarioId") VALUES (%s, %s, %s);
             """,
             ("Actualización", f"Datos del docente {data['Nombre']} {data['Apellido']} actualizados", admin_id)
         )
