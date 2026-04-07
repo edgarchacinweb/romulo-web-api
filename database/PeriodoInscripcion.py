@@ -76,15 +76,23 @@ class PeriodoInscripcionRep(Repository):
 
     def update(self, model):
         cursor = self.db_connection.cursor()
-        sql = "UPDATE \"PeriodoInscripcion\" SET"
-        values = list()
+        updates = []
+        values = []
         
-        for key, value in model.to_dict().items():
-            if value and key != "PeriodoInscripcion":
-                sql += f" \"{key}\"=%s,"
-                values.append(value)
-
-        sql = sql[:-1] + f" WHERE \"PeriodoInscripcion\"=%s"
+        if model.start:
+            updates.append("\"Inicio\"=%s")
+            values.append(model.start)
+        if model.end:
+            updates.append("\"Fin\"=%s")
+            values.append(model.end)
+        if model.activo is not None:
+            updates.append("\"Activo\"=%s")
+            values.append(model.activo)
+            
+        if not updates:
+            return False
+            
+        sql = "UPDATE \"PeriodoInscripcion\" SET " + ", ".join(updates) + " WHERE \"PeriodoInscripcion\"=%s"
         self.logger.info(sql)
         values.append(model.id)
         cursor.execute(sql, tuple(values))
