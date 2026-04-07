@@ -157,6 +157,13 @@ def create():
                 raise ValidationError(f"La sección debe tener al menos 15 estudiantes inscritos para asignarle un horario. (Actual: {student_count})")
 
         for item in data:
+            if item.get("MateriaId") == "sin_asignar" or item.get("MateriaId") is None:
+                cursor.execute("""
+                    DELETE FROM "Horario"
+                    WHERE "CursoId"=%s AND "Seccion"=%s AND "PeriodoEscolarId"=%s AND "Dia"=%s AND "BloqueHorarioId"=%s;
+                """, (item["CursoId"], item["Seccion"], periodo_escolar_id, item["Dia"], item["BloqueHorarioId"]))
+                continue
+
             if not Validations.is_uuid(item["CursoId"]):
                 raise InvalidId("El identificador del curso es inválido")
             elif not Validations.is_uuid(item["BloqueHorarioId"]):
@@ -196,8 +203,8 @@ def create():
                 cursor.execute("""
                     UPDATE "Horario"
                     SET "MateriaId"=%s, "DocenteId"=%s
-                    WHERE "CursoId"=%s AND "Seccion"=%s AND "PeriodoEscolarId"=%s AND "Dia"=%s;
-                """, (item["MateriaId"], item["DocenteId"], item["CursoId"], item["Seccion"], periodo_escolar_id, item["Dia"]))
+                    WHERE "CursoId"=%s AND "Seccion"=%s AND "PeriodoEscolarId"=%s AND "Dia"=%s AND "BloqueHorarioId"=%s;
+                """, (item["MateriaId"], item["DocenteId"], item["CursoId"], item["Seccion"], periodo_escolar_id, item["Dia"], item["BloqueHorarioId"]))
             else:
                 cursor.execute("""
                     INSERT INTO "Horario" ("CursoId", "Seccion", "PeriodoEscolarId", "Dia", "BloqueHorarioId", "DocenteId", "MateriaId")
