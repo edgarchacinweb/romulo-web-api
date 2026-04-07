@@ -26,17 +26,31 @@ def list_subjects():
             raise Unauthorized()
 
         cursor.execute("""
-            SELECT m."MateriaId", m."Nombre", m."FechaCreacion", mh."CursoId", mh."HorasAcademicas" FROM "MateriaHorasAcademicas" AS mh INNER JOIN "Materia" AS m ON m."MateriaId"=mh."MateriaId" WHERE m."Activo"=true;
+            SELECT m."MateriaId", m."Nombre", m."FechaCreacion", c."Grado", mh."HorasAcademicas" 
+            FROM "MateriaHorasAcademicas" AS mh 
+            INNER JOIN "Materia" AS m ON m."MateriaId"=mh."MateriaId" 
+            INNER JOIN "Curso" AS c ON c."CursoId"=mh."CursoId"
+            WHERE m."Activo"=true
+            ORDER BY m."Nombre" ASC, c."Grado" ASC;
         """)
         rows = cursor.fetchall()
 
-        return jsonify([{
-            "MateriaId": s[0],
-            "Nombre": s[1],
-            "Fecha": s[2].strftime("%m/%d/%Y") if s[2] else "",
-            "CursoId": s[3],
-            "HorasAcademicas": s[4]
-        } for s in rows]), 200
+        subjects_dict = {}
+        for s in rows:
+            materia_id = s[0]
+            if materia_id not in subjects_dict:
+                subjects_dict[materia_id] = {
+                    "MateriaId": materia_id,
+                    "Nombre": s[1],
+                    "Fecha": s[2].strftime("%m/%d/%Y") if s[2] else "",
+                    "HorasPorCurso": []
+                }
+            subjects_dict[materia_id]["HorasPorCurso"].append({
+                "Grado": s[3],
+                "HorasAcademicas": s[4]
+            })
+
+        return jsonify(list(subjects_dict.values())), 200
     except Exception as err:
         conn.rollback()
         ex = exception_handler(err)
@@ -61,7 +75,7 @@ def teacher_subjects():
         # d."DatosPersonaId" en la tabla Docente
         # u."DatosPersona" en la tabla Usuario
         query = """
-            SELECT DISTINCT m."MateriaId", m."Nivel", m."Nombre", m."Activo", m."FechaCreacion" 
+            SELECT DISTINCT m."MateriaId", m."Nombre"
             FROM "Materia" m
             INNER JOIN "DocenteMateria" dm ON m."MateriaId" = dm."MateriaId"
             INNER JOIN "Docente" d ON dm."DocenteId" = d."DocenteId"
@@ -74,9 +88,7 @@ def teacher_subjects():
 
         return jsonify([{
             "MateriaId": s[0],
-            "Nivel": s[1],
-            "Nombre": s[2],
-            "Fecha": s[4].strftime("%m/%d/%Y") if s[4] else ""
+            "Nombre": s[1]
         } for s in rows]), 200
     except Exception as err:
         conn.rollback()
@@ -98,7 +110,7 @@ def create_subject():
 
         data = request.get_json()
 
-        if not data["HorasAcademicas"] or type(data["HorasAcademicas"]) != list:
+        if not data.get("HorasAcademicas") or type(data["HorasAcademicas"]) != list:
             raise BadRequest("Las horas academicas deben ser un array")
         elif "Nombre" not in data:
             raise MissingField("Debes indicar el nombre de la materia")
@@ -106,7 +118,7 @@ def create_subject():
             raise InsertEntityError("El nombre de la materia debe tener al menos 3 caracteres")
 
         # Obtener todos los cursos academicos
-        cursor.execute("""SELECT "CursoId" FROM "Curso" ORDER BY "Grado" ASC;""")
+        cursor.execute("""SELECT "CursoId", "Grado" FROM "Curso" ORDER BY "Grado" ASC;""")
         rows = cursor.fetchall()
 
         sql = """
@@ -117,23 +129,40 @@ def create_subject():
         materia_id = cursor.fetchone()[0]
         
         hoursData = []
-        for i in range(0, 5):
-            hoursData.append(rows[i][0])
-            hoursData.append(materia_id)
-            hoursData.append(str(data["HorasAcademicas"][i]))
+        insert_queries = []
+        horas_por_curso = []
+        for i in range(len(data["HorasAcademicas"])):
+            if i < len(rows):
+                val = data["HorasAcademicas"][i]
+                horas = int(val) if val is not None else 0
+                if horas > 0:
+                    hoursData.extend([rows[i][0], materia_id, horas])
+                    insert_queries.append('(%s, %s, %s)')
+                    horas_por_curso.append({
+                        "Grado": rows[i][1],
+                        "HorasAcademicas": horas
+                    })
         
-        sql = """
-                INSERT INTO "MateriaHorasAcademicas" ("CursoId", "MateriaId", "HorasAcademicas") VALUES (%s, %s, %s);
-                INSERT INTO "MateriaHorasAcademicas" ("CursoId", "MateriaId", "HorasAcademicas") VALUES (%s, %s, %s);
-                INSERT INTO "MateriaHorasAcademicas" ("CursoId", "MateriaId", "HorasAcademicas") VALUES (%s, %s, %s);
-                INSERT INTO "MateriaHorasAcademicas" ("CursoId", "MateriaId", "HorasAcademicas") VALUES (%s, %s, %s);
-                INSERT INTO "MateriaHorasAcademicas" ("CursoId", "MateriaId", "HorasAcademicas") VALUES (%s, %s, %s);
-        """
+        if insert_queries:
+            sql_insert = f"""
+                INSERT INTO "MateriaHorasAcademicas" ("CursoId", "MateriaId", "HorasAcademicas") 
+                VALUES {','.join(insert_queries)};
+            """
+            cursor.execute(sql_insert, tuple(hoursData))
 
-        cursor.execute(sql, tuple(hoursData))
         conn.commit()
 
-        return jsonify({"MateriaId": materia_id}), 201
+        cursor.execute('SELECT "FechaCreacion" FROM "Materia" WHERE "MateriaId" = %s', (materia_id,))
+        fecha_creacion = cursor.fetchone()[0]
+
+        response_data = {
+            "MateriaId": materia_id,
+            "Nombre": data["Nombre"],
+            "Fecha": fecha_creacion.strftime("%m/%d/%Y") if fecha_creacion else "",
+            "HorasPorCurso": horas_por_curso
+        }
+
+        return jsonify(response_data), 201
     except Exception as err:
         conn.rollback()
         ex = exception_handler(err)

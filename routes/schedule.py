@@ -1,4 +1,5 @@
 from flask import Blueprint, request, jsonify, Response
+from datetime import datetime, date
 from utils.logger import Logger
 from utils.handler import exception_handler
 from utils.exceptions import * 
@@ -144,7 +145,25 @@ def create():
 
         periodo_escolar_id = row[0]
 
+        # Validación: Mínimo 15 estudiantes inscritos
+        if len(data) > 0:
+            cursor.execute("""
+                SELECT COUNT(*) FROM "CursoEstudiante" ce
+                JOIN "EstadoEstudiante" ee ON ce."EstudianteId" = ee."EstudianteId"
+                WHERE ce."CursoId" = %s AND ce."Seccion" = %s AND ce."PeriodoEscolarId" = %s AND ee."Estado" = 'inscrito'
+            """, (data[0]["CursoId"], data[0]["Seccion"], periodo_escolar_id))
+            student_count = cursor.fetchone()[0]
+            if student_count < 15:
+                raise ValidationError(f"La sección debe tener al menos 15 estudiantes inscritos para asignarle un horario. (Actual: {student_count})")
+
         for item in data:
+            if item.get("MateriaId") == "sin_asignar" or item.get("MateriaId") is None:
+                cursor.execute("""
+                    DELETE FROM "Horario"
+                    WHERE "CursoId"=%s AND "Seccion"=%s AND "PeriodoEscolarId"=%s AND "Dia"=%s AND "BloqueHorarioId"=%s;
+                """, (item["CursoId"], item["Seccion"], periodo_escolar_id, item["Dia"], item["BloqueHorarioId"]))
+                continue
+
             if not Validations.is_uuid(item["CursoId"]):
                 raise InvalidId("El identificador del curso es inválido")
             elif not Validations.is_uuid(item["BloqueHorarioId"]):
@@ -157,6 +176,19 @@ def create():
                 raise InvalidId("La sección es inválida")
             elif not Validations.is_day(item["Dia"]):
                 raise InvalidId("El día es inválido")
+
+            # Validación Anti-Choques: Verificar si el docente ya tiene clase en el mismo bloque y día
+            cursor.execute("""
+                SELECT c."Grado", h."Seccion" FROM "Horario" h
+                JOIN "Curso" c ON h."CursoId" = c."CursoId"
+                WHERE h."DocenteId" = %s AND h."BloqueHorarioId" = %s AND h."Dia" = %s 
+                AND h."PeriodoEscolarId" = %s AND (h."CursoId" != %s OR h."Seccion" != %s)
+            """, (item["DocenteId"], item["BloqueHorarioId"], item["Dia"], periodo_escolar_id, item["CursoId"], item["Seccion"]))
+            clash = cursor.fetchone()
+            if clash:
+                cursor.execute("SELECT \"Nombre\", \"Apellido\" FROM \"DatosPersona\" dp JOIN \"Docente\" d ON d.\"DatosPersonaId\" = dp.\"DatosPersonaId\" WHERE d.\"DocenteId\" = %s", (item["DocenteId"],))
+                teacher_name = cursor.fetchone()
+                raise ValidationError(f"El docente {teacher_name[0]} {teacher_name[1]} ya tiene una clase asignada el día {item['Dia']} en el bloque solicitado (ya asignado a {clash[0]}° {number_to_letter(int(clash[1]))}).")
 
             # Buscar si existe un horario con el mismo curso, seccion, periodo escolar y dia
             cursor.execute("""
@@ -171,8 +203,8 @@ def create():
                 cursor.execute("""
                     UPDATE "Horario"
                     SET "MateriaId"=%s, "DocenteId"=%s
-                    WHERE "CursoId"=%s AND "Seccion"=%s AND "PeriodoEscolarId"=%s AND "Dia"=%s;
-                """, (item["MateriaId"], item["DocenteId"], item["CursoId"], item["Seccion"], periodo_escolar_id, item["Dia"]))
+                    WHERE "CursoId"=%s AND "Seccion"=%s AND "PeriodoEscolarId"=%s AND "Dia"=%s AND "BloqueHorarioId"=%s;
+                """, (item["MateriaId"], item["DocenteId"], item["CursoId"], item["Seccion"], periodo_escolar_id, item["Dia"], item["BloqueHorarioId"]))
             else:
                 cursor.execute("""
                     INSERT INTO "Horario" ("CursoId", "Seccion", "PeriodoEscolarId", "Dia", "BloqueHorarioId", "DocenteId", "MateriaId")
@@ -210,6 +242,81 @@ def create():
         } for h in rows]), 201
     except Exception as err:
         conn.rollback()
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
+
+@schedule_bp.route("/schedule/admin/status", methods=["GET"])
+def admin_status():
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+    try:
+        payload = Security.verify_token(request.headers)
+        if payload is None or payload.get("role") != "ADMIN":
+            raise Unauthorized()
+
+        # Obtener periodo activo
+        cursor.execute("SELECT \"PeriodoEscolarId\" FROM \"PeriodoEscolar\" WHERE \"Activo\"=true ORDER BY \"FechaInicio\" DESC LIMIT 1;")
+        periodo = cursor.fetchone()
+        if not periodo:
+            return jsonify([]), 200
+        
+        periodo_id = periodo[0]
+
+        # Obtener total de bloques (recesos excluidos)
+        cursor.execute("SELECT * FROM \"BloqueHorario\"")
+        all_blocks = cursor.fetchall()
+        valid_blocks_count = 0
+        for b in all_blocks:
+            minutes = (datetime.combine(date.today(), b[2]) - datetime.combine(date.today(), b[1])).seconds / 60
+            if minutes > 15:
+                valid_blocks_count += 1
+        
+        total_slots = valid_blocks_count * 5 # 5 dias
+
+        # Obtener todas las secciones y sus datos
+        cursor.execute("""
+            SELECT c."CursoId", c."Grado", ce."Seccion", COUNT(ce."EstudianteId") as Alumnos
+            FROM "CursoEstudiante" ce
+            JOIN "Curso" c ON ce."CursoId" = c."CursoId"
+            JOIN "EstadoEstudiante" ee ON ce."EstudianteId" = ee."EstudianteId"
+            WHERE ce."PeriodoEscolarId" = %s AND ee."Estado" = 'inscrito'
+            GROUP BY c."CursoId", c."Grado", ce."Seccion"
+            ORDER BY c."Grado" ASC, ce."Seccion" ASC
+        """, (periodo_id,))
+        
+        sections = cursor.fetchall()
+        results = []
+
+        for s in sections:
+            curso_id, grado, seccion, alumnos = s
+            
+            # Contar bloques asignados en el horario
+            cursor.execute("""
+                SELECT COUNT(*) FROM "Horario"
+                WHERE "CursoId" = %s AND "Seccion" = %s AND "PeriodoEscolarId" = %s
+            """, (curso_id, seccion, periodo_id))
+            assigned_count = cursor.fetchone()[0]
+
+            status = "Vacio"
+            if assigned_count >= total_slots:
+                status = "Completo"
+            elif assigned_count > 0:
+                status = "Incompleto"
+
+            results.append({
+                "CursoId": curso_id,
+                "Grado": grado,
+                "Seccion": seccion,
+                "SeccionLetra": number_to_letter(int(seccion)),
+                "Alumnos": alumnos,
+                "Estatus": status
+            })
+
+        return jsonify(results), 200
+
+    except Exception as err:
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
     finally:

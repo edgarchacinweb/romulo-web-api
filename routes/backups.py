@@ -37,8 +37,8 @@ def db_backup():
 
         return jsonify({"Archivo": backup_file}), 200
     except Exception as err:
-        ex = exception_handler(err)
-        return jsonify(ex[0]), ex[1]
+        logger.error(str(err))
+        return jsonify({"error": True, "message": "Hubo un error al intentar generar el respaldo de la BBDD", "details": str(err)}), 500
     
 @backup_bp.route("/backup/list", methods=["GET"])
 def list():

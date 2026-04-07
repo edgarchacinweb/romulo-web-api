@@ -9,6 +9,7 @@ from utils.email import send_email
 from utils.config import app
 import os
 import re
+import math
 from datetime import datetime
 import io
 import traceback
@@ -42,28 +43,84 @@ def validar_cedula_estudiante(cedula_str):
 # --- FUNCIÓN AUXILIAR: VALIDACIÓN DE FECHA DE NACIMIENTO ---
 def validar_fecha_nacimiento(fecha_str):
     try:
-        fecha = datetime.strptime(fecha_str, "%d/%m/%Y")
-        if fecha.year < 2008 or fecha.year > 2015:
-            raise Exception("El año de nacimiento del estudiante debe estar estrictamente entre 2008 y 2015.")
+        return datetime.strptime(fecha_str, "%d/%m/%Y")
     except ValueError:
         raise Exception("Formato de fecha de nacimiento inválido.")
 
-# --- FUNCIÓN AUXILIAR: ASIGNACIÓN INTELIGENTE DE SECCIÓN ---
-def obtener_seccion_disponible(cursor, curso_id, periodo_id):
-    CAPACIDAD_MAXIMA = 30
-    for seccion_num in range(1, 21):
-        query = """
-            SELECT COUNT(*) 
-            FROM "CursoEstudiante" 
-            WHERE "CursoId" = %s 
-            AND "Seccion" = %s 
-            AND "PeriodoEscolarId" = %s
-        """
-        cursor.execute(query, (curso_id, seccion_num, periodo_id))
-        cantidad = cursor.fetchone()[0]
-        if cantidad < CAPACIDAD_MAXIMA:
-            return seccion_num
-    return 1
+# --- FUNCIÓN AUXILIAR: VALIDACIÓN DE EDAD POR GRADO ---
+def validar_edad_grado(fecha_dt, grado):
+    today = datetime.today()
+    edad = today.year - fecha_dt.year - ((today.month, today.day) < (fecha_dt.month, fecha_dt.day))
+    
+    rangos = {
+        1: (11, 13),
+        2: (13, 14),
+        3: (14, 15),
+        4: (15, 16),
+        5: (16, 18)
+    }
+    
+    if grado in rangos:
+        min_e, max_e = rangos[grado]
+        if edad < min_e or edad > max_e:
+            grado_str = {1: "1er Año", 2: "2do Año", 3: "3er Año", 4: "4to Año", 5: "5to Año"}[grado]
+            raise Exception(f"El estudiante tiene {edad} años, lo cual no cumple con el rango permitido ({min_e} - {max_e} años) para inscribirse en {grado_str}.")
+
+# --- FUNCIONES DE ASIGNACIÓN DINÁMICA DE SECCIÓN ---
+def calcular_distribucion_secciones(total_estudiantes):
+    min_estud = 15
+    max_estud = 30
+    max_secciones = 3
+    if total_estudiantes == 0:
+        return {}
+    
+    secciones = math.ceil(total_estudiantes / max_estud)
+    if secciones == 0:
+        secciones = 1
+    if secciones > max_secciones:
+        secciones = max_secciones
+
+    base = total_estudiantes // secciones
+    sobrantes = total_estudiantes % secciones
+
+    distribucion = {}
+    for i in range(1, secciones + 1):
+        cupos = base + (1 if i <= sobrantes else 0)
+        distribucion[i] = cupos
+
+    res = {1: 0, 2: 0, 3: 0}
+    for k, v in distribucion.items():
+        res[k] = v
+        
+    return res
+
+def balancear_secciones_curso(cursor, curso_id, periodo_id):
+    query_est = """
+        SELECT ce."EstudianteId"
+        FROM "CursoEstudiante" ce
+        JOIN "EstadoEstudiante" ee ON ce."EstudianteId" = ee."EstudianteId"
+        WHERE ce."CursoId" = %s AND ce."PeriodoEscolarId" = %s
+        AND ee."Estado" = 'inscrito'
+        ORDER BY ce."EstudianteId" ASC
+    """
+    cursor.execute(query_est, (curso_id, periodo_id))
+    estudiantes = cursor.fetchall()
+    total = len(estudiantes)
+
+    if total == 0:
+        return
+
+    dist = calcular_distribucion_secciones(total)
+    
+    secciones_asignar = []
+    for seccion, cantidad in dist.items():
+        secciones_asignar.extend([seccion] * cantidad)
+
+    for index, est in enumerate(estudiantes):
+        seccion_nueva = secciones_asignar[index] if index < len(secciones_asignar) else 3
+        est_id = est[0]
+        cursor.execute('''UPDATE "CursoEstudiante" SET "Seccion" = %s WHERE "EstudianteId" = %s AND "CursoId" = %s AND "PeriodoEscolarId" = %s''',
+                       (seccion_nueva, est_id, curso_id, periodo_id))
 
 # --- 1. VERIFICAR PERIODO ---
 @student_bp.route("/students/check_period", methods=["GET"])
@@ -86,7 +143,8 @@ def check_period():
 def create():
     conn, cursor = get_db()
     try:
-        if not Security.verify_token(request.headers): 
+        payload = Security.verify_token(request.headers)
+        if not payload: 
             return jsonify({"message": "No autorizado"}), 401
 
         data, files = request.form, request.files
@@ -96,9 +154,16 @@ def create():
         if "Cedula" in data: validar_cedula_estudiante(data["Cedula"])
 
         if "FechaNacimiento" in data:
-            validar_fecha_nacimiento(data["FechaNacimiento"])
+            fecha_dt = validar_fecha_nacimiento(data["FechaNacimiento"])
         else:
             raise Exception("La fecha de nacimiento es requerida.")
+
+        # Obtener Grado del curso para validar edad
+        val_curso_id = str(data["IdCurso"]).strip()
+        cursor.execute('SELECT "Grado" FROM "Curso" WHERE "CursoId" = %s', (val_curso_id,))
+        curso_row = cursor.fetchone()
+        if not curso_row: raise Exception("El curso seleccionado no existe.")
+        validar_edad_grado(fecha_dt, curso_row[0])
 
         cursor.execute("""INSERT INTO "DatosPersona" ("Nombre", "Apellido", "Sexo", "Cedula", "Direccion") 
                            VALUES (%s,%s,%s,%s,%s) RETURNING "DatosPersonaId";""",
@@ -115,9 +180,15 @@ def create():
         val_curso_id = str(data["IdCurso"]).strip()
         cursor.execute('SELECT "PeriodoEscolarId" FROM "PeriodoInscripcion" WHERE "Activo" = TRUE LIMIT 1;')
         periodo_row = cursor.fetchone()
+        
+        is_admin = payload.get("role") == Rol.ADMIN.name
+        if not periodo_row and is_admin:
+            cursor.execute('SELECT "PeriodoEscolarId" FROM "PeriodoEscolar" ORDER BY "PeriodoEscolarId" DESC LIMIT 1;')
+            periodo_row = cursor.fetchone()
+            
         if not periodo_row: raise Exception("No hay un periodo escolar activo para inscribir.")
         periodo_id = periodo_row[0]
-        seccion_asignada = obtener_seccion_disponible(cursor, val_curso_id, periodo_id)
+        seccion_asignada = 0
 
         cursor.execute("""
             INSERT INTO "CursoEstudiante" ("EstudianteId", "CursoId", "Seccion", "PeriodoEscolarId")
@@ -139,7 +210,7 @@ def create():
                 files[key].save(path)
 
         conn.commit()
-        return jsonify({"message": f"Estudiante registrado con éxito en la sección {number_to_letter(seccion_asignada)}"}), 201
+        return jsonify({"message": "Estudiante registrado con éxito en estado revisión. Sección: Por asignar"}), 201
     except Exception as err:
         conn.rollback()
         return jsonify({"message": str(err)}), 500
@@ -153,7 +224,7 @@ def get_student(id):
     try:
         query = """
             SELECT dp."Nombre", dp."Apellido", dp."Sexo", dp."Cedula", dp."Direccion", 
-                   e."FechaNacimiento", e."Parentesco", ce."CursoId", c."Grado"
+                   e."FechaNacimiento", e."Parentesco", ce."CursoId", c."Grado", ce."Seccion"
             FROM "Estudiante" e
             JOIN "DatosPersona" dp ON e."DatosPersonaId" = dp."DatosPersonaId"
             LEFT JOIN "CursoEstudiante" ce ON e."EstudianteId" = ce."EstudianteId"
@@ -169,7 +240,8 @@ def get_student(id):
         return jsonify({
             "Nombre": row[0], "Apellido": row[1], "Genero": row[2], 
             "Cedula": row[3], "Direccion": row[4], "FechaNacimiento": str(row[5]), 
-            "Parentesco": row[6], "IdCurso": row[7], "Grado": row[8]
+            "Parentesco": row[6], "IdCurso": row[7], "Grado": row[8],
+            "Seccion": "Por asignar" if row[9] == 0 or row[9] is None else number_to_letter(row[9])
         }), 200
     except Exception as err:
         conn.rollback()
@@ -237,7 +309,7 @@ def filter_students():
         return jsonify([{
             "EstudianteId": r[0], "Estado": r[1], "FechaNacimiento": str(r[7]), "Parentesco": r[14],
             "DatosPersona": { "Nombre": r[2], "Apellido": r[3], "Cedula": r[4], "Sexo": r[12], "Direccion": r[13] },
-            "Curso": { "Grado": r[5], "Seccion": number_to_letter(r[6]) },
+            "Curso": { "Grado": r[5], "Seccion": "Por asignar" if r[6] == 0 else number_to_letter(r[6]) },
             "Representante": {
                 "Nombre": r[8], "Apellido": r[9], "UsuarioId": r[10] if r[10] else "Sin Usuario", 
                 "Email": r[11] if r[11] else "Sin Email", "Cedula": r[15], "Telefono": r[16],
@@ -257,8 +329,14 @@ def approve_student(id):
     try:
         cursor.execute('UPDATE "EstadoEstudiante" SET "Estado" = \'inscrito\' WHERE "EstudianteId" = %s', (id,))
         cursor.execute('UPDATE "Estudiante" SET "Activo" = TRUE WHERE "EstudianteId" = %s', (id,))
+        
+        cursor.execute('SELECT "CursoId", "PeriodoEscolarId" FROM "CursoEstudiante" WHERE "EstudianteId" = %s ORDER BY "PeriodoEscolarId" DESC LIMIT 1', (id,))
+        curso_info = cursor.fetchone()
+        if curso_info:
+            balancear_secciones_curso(cursor, curso_info[0], curso_info[1])
+            
         conn.commit()
-        return jsonify({"message": "Estudiante aprobado exitosamente"}), 200
+        return jsonify({"message": "Estudiante aprobado exitosamente y secciones balanceadas"}), 200
     except Exception as err:
         conn.rollback()
         return jsonify({"message": str(err)}), 500
@@ -335,7 +413,15 @@ def submit_reinscription(id):
         if "Nombre" in data: validar_solo_letras(data["Nombre"], "Nombre")
         if "Apellido" in data: validar_solo_letras(data["Apellido"], "Apellido")
         if "Cedula" in data: validar_cedula_estudiante(data["Cedula"])
-        if "FechaNacimiento" in data: validar_fecha_nacimiento(data["FechaNacimiento"])
+        if "FechaNacimiento" in data: 
+            fecha_dt = validar_fecha_nacimiento(data["FechaNacimiento"])
+            
+            # Obtener Grado del curso para validar edad
+            val_curso_id = str(data["IdCurso"]).strip()
+            cursor.execute('SELECT "Grado" FROM "Curso" WHERE "CursoId" = %s', (val_curso_id,))
+            curso_row = cursor.fetchone()
+            if not curso_row: raise Exception("El curso seleccionado no existe.")
+            validar_edad_grado(fecha_dt, curso_row[0])
 
         # 1. Actualizar DatosPersona
         cursor.execute('SELECT "DatosPersonaId" FROM "Estudiante" WHERE "EstudianteId" = %s', (id,))
@@ -358,9 +444,9 @@ def submit_reinscription(id):
 
         cursor.execute('SELECT * FROM "CursoEstudiante" WHERE "EstudianteId" = %s AND "PeriodoEscolarId" = %s', (id, periodo_id))
         if cursor.fetchone():
-            cursor.execute('UPDATE "CursoEstudiante" SET "CursoId" = %s WHERE "EstudianteId" = %s AND "PeriodoEscolarId" = %s', (val_curso_id, id, periodo_id))
+            cursor.execute('UPDATE "CursoEstudiante" SET "CursoId" = %s, "Seccion" = 0 WHERE "EstudianteId" = %s AND "PeriodoEscolarId" = %s', (val_curso_id, id, periodo_id))
         else:
-            seccion_asignada = obtener_seccion_disponible(cursor, val_curso_id, periodo_id)
+            seccion_asignada = 0
             cursor.execute("""
                 INSERT INTO "CursoEstudiante" ("EstudianteId", "CursoId", "Seccion", "PeriodoEscolarId")
                 VALUES (%s, %s, %s, %s)
@@ -412,7 +498,7 @@ def get_all_by_parent(parent_id):
             {
                 "EstudianteId": r[0], 
                 "FechaNacimiento": str(r[1]),
-                "Curso": {"Grado": r[2], "Seccion": number_to_letter(r[3]), "PeriodoEscolarId": r[9]}, 
+                "Curso": {"Grado": r[2], "Seccion": "Por asignar" if r[3] == 0 else number_to_letter(r[3]), "PeriodoEscolarId": r[9]}, 
                 "DatosPersona": {
                     "Nombre": r[4], "Apellido": r[5], "Sexo": r[6], "Cedula": r[7]
                 }, 

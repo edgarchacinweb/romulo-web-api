@@ -12,6 +12,10 @@ class PeriodoEscolarRep(Repository):
     def create(self, model: PeriodoEscolar):
         try:
             cursor = self.db_connection.cursor()
+            
+            # Desactivar el período anterior (regla de negocio)
+            cursor.execute('UPDATE "PeriodoEscolar" SET "Activo" = FALSE WHERE "Activo" = TRUE')
+            
             sql = "INSERT INTO \"PeriodoEscolar\" (\"FechaInicio\",\"FechaFin\", \"CapacidadSecciones\") VALUES (%s,%s, %s) RETURNING \"PeriodoEscolarId\""
             self.logger.debug(sql, "SQL")
             cursor.execute(sql, (model.fecha_inicio, model.fecha_fin, model.capacidad))
@@ -68,7 +72,7 @@ class PeriodoEscolarRep(Repository):
     def get_all(self):
         try:
             cursor = self.db_connection.cursor()
-            sql = "SELECT * FROM \"PeriodoEscolar\" WHERE \"Activo\"=TRUE ORDER BY \"FechaInicio\" DESC;"
+            sql = "SELECT * FROM \"PeriodoEscolar\" ORDER BY \"FechaInicio\" DESC;"
             self.logger.debug(sql, "SQL")
             cursor.execute(sql)
             periods = cursor.fetchall()

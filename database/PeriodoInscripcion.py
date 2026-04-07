@@ -27,7 +27,7 @@ class PeriodoInscripcionRep(Repository):
 
     def get(self, id):
         cursor = self.db_connection.cursor()
-        sql = "SELECT * FROM \"PeriodoInscripcion\" WHERE \"PeriodoInscripcionId\"=%s"
+        sql = "SELECT * FROM \"PeriodoInscripcion\" WHERE \"PeriodoInscripcion\"=%s"
         self.logger.debug(sql, "SQL")
         cursor.execute(sql, (id,))
         reg = cursor.fetchone()
@@ -47,7 +47,7 @@ class PeriodoInscripcionRep(Repository):
 
     def list(self):
         cursor = self.db_connection.cursor()
-        sql = "SELECT pi.\"PeriodoInscripcion\", pi.\"Inicio\", pi.\"Fin\", pi.\"FechaCreacion\", pe.\"PeriodoEscolarId\", pe.\"FechaInicio\", pe.\"FechaFin\" FROM \"PeriodoInscripcion\" AS pi INNER JOIN \"PeriodoEscolar\" AS pe ON pi.\"PeriodoEscolarId\"=pe.\"PeriodoEscolarId\";"
+        sql = "SELECT pi.\"PeriodoInscripcion\", pi.\"Inicio\", pi.\"Fin\", pi.\"FechaCreacion\", pe.\"PeriodoEscolarId\", pe.\"FechaInicio\", pe.\"FechaFin\", pi.\"Activo\" FROM \"PeriodoInscripcion\" AS pi INNER JOIN \"PeriodoEscolar\" AS pe ON pi.\"PeriodoEscolarId\"=pe.\"PeriodoEscolarId\";"
         self.logger.debug(sql, "SQL")
         cursor.execute(sql)
         inscripciones = cursor.fetchall()
@@ -58,6 +58,7 @@ class PeriodoInscripcionRep(Repository):
             "Inicio": inscripcion[1],
             "Fin": inscripcion[2],
             "FechaCreacion": inscripcion[3],
+            "Activo": inscripcion[7],
             "PeriodoEscolar": PeriodoEscolar({
                 "id": inscripcion[4],
                 "FechaInicio": inscripcion[5],
@@ -75,16 +76,25 @@ class PeriodoInscripcionRep(Repository):
 
     def update(self, model):
         cursor = self.db_connection.cursor()
-        sql = "UPDATE \"PeriodoInscripcion\" SET"
-        values = list()
+        updates = []
+        values = []
         
-        for key, value in model.to_dict().items():
-            if value and key != "PeriodoInscripcion":
-                sql += f" \"{key}\"=%s,"
-                values.append(value)
-
-        sql = sql[:-1] + f" WHERE \"PeriodoInscripcion\"='{model.id}'"
+        if model.start:
+            updates.append("\"Inicio\"=%s")
+            values.append(model.start)
+        if model.end:
+            updates.append("\"Fin\"=%s")
+            values.append(model.end)
+        if model.activo is not None:
+            updates.append("\"Activo\"=%s")
+            values.append(model.activo)
+            
+        if not updates:
+            return False
+            
+        sql = "UPDATE \"PeriodoInscripcion\" SET " + ", ".join(updates) + " WHERE \"PeriodoInscripcion\"=%s"
         self.logger.info(sql)
+        values.append(model.id)
         cursor.execute(sql, tuple(values))
         affected = cursor.rowcount
         self.logger.debug(f"Affected {affected} rows")

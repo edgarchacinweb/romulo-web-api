@@ -24,6 +24,11 @@ def datetime_to_str(datetime_object: datetime) -> str:
 def capitalize(string: str) -> str:
     return " ".join([w.capitalize() for w in string.split(" ")])
 
-def number_to_letter(number: int) -> str:
+def number_to_letter(number: Union[int, None]) -> str:
+    if not number or number == 0:
+        return "Por asignar"
     letters = ["A", "B", "C", "D", "E", "F", "G"]
-    return letters[number - 1]
+    try:
+        return letters[number - 1]
+    except (IndexError, TypeError):
+        return "A"
