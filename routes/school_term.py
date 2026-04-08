@@ -96,6 +96,8 @@ def create():
 @school_term_bp.route("/school_term/get", methods=["GET"])
 @school_term_bp.route("/school_term/get/<string:id>", methods=["GET"])
 def get(id: str = ""):
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
     try:
         term: PeriodoEscolar
         if id:
@@ -106,13 +108,31 @@ def get(id: str = ""):
             elif not Validations.is_uuid(id):
                 raise InvalidId(f"ID inválido: {id}")
 
-            term = rep.get(id)
+            cursor.execute("""
+                SELECT * FROM "PeriodoEscolar" WHERE "PeriodoEscolarId" = %s
+            """, (id,))
+            term = cursor.fetchone()
         else:
-            term = rep.get_latest()
-        return jsonify(term.to_dict()), 200
+            cursor.execute("""
+                SELECT * FROM "PeriodoEscolar" ORDER BY "FechaInicio" DESC LIMIT 1
+            """)
+            term = cursor.fetchone()
+        
+        if not term:
+            raise NotFound("No se encontró el período escolar")
+        return jsonify({
+            "PeriodoEscolarId": term[0],
+            "FechaInicio": term[1].strftime("%m/%d/%Y") if term[1] else "",
+            "FechaFin": term[2].strftime("%m/%d/%Y") if term[2] else "",
+            "CapacidadSecciones": term[3],
+            "FechaCreacion": term[4].strftime("%m/%d/%Y") if term[4] else ""
+        }), 200
     except Exception as err:
+        conn.rollback()
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
 
 @school_term_bp.route("/school_term/list", methods=["GET"])
 def list():
@@ -302,4 +322,4 @@ def get_estadisticas(id: str):
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
     finally:
-        cursor.close()
+        cursor.close()
