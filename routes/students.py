@@ -13,7 +13,10 @@ import math
 from datetime import datetime
 import io
 import traceback
+from utils.logger import Logger
+from datetime import date
 
+logger = Logger()
 student_bp = Blueprint("student", __name__)
 
 def get_db():
@@ -172,7 +175,7 @@ def create():
 
         cursor.execute("""INSERT INTO "Estudiante" ("FechaNacimiento", "Parentesco", "DatosPersonaId", "RepresentanteId") 
                            VALUES (%s,%s,%s,%s) RETURNING "EstudianteId";""",
-                        (data["FechaNacimiento"], data["Parentesco"], dp_id, data["IdRepresentante"]))
+                        (date(data["FechaNacimiento"]), data["Parentesco"], dp_id, data["IdRepresentante"]))
         est_id = cursor.fetchone()[0]
 
         cursor.execute('INSERT INTO "EstadoEstudiante" ("EstudianteId", "Estado") VALUES (%s, \'revision\')', (est_id,))
@@ -213,6 +216,7 @@ def create():
         return jsonify({"message": "Estudiante registrado con éxito en estado revisión. Sección: Por asignar"}), 201
     except Exception as err:
         conn.rollback()
+        logger.error(str(err))
         return jsonify({"message": str(err)}), 500
     finally:
         cursor.close()
