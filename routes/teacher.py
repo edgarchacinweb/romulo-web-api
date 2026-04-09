@@ -48,8 +48,8 @@ def create_teacher():
             raise ValidationError("El sexo del docente tiene un formato incorrecto")
         elif "Cedula" not in data or not data["Cedula"]:
             raise MissingEntityData("La cédula del docente es requerida")
-        elif not Validations.is_ci(data["Cedula"]):
-            raise ValidationError("La cédula del docente tiene un formato incorrecto")
+        elif not (str(data["Cedula"]).isdigit() and 5 <= len(str(data["Cedula"]).strip()) <= 8):
+            raise ValidationError("La cédula del docente debe tener entre 5 y 8 dígitos numéricos")
         elif "Telefono" not in data or not data["Telefono"]:
             raise MissingEntityData("El teléfono del docente es requerido")
         elif "Ocupacion" not in data or not data["Ocupacion"]:
@@ -350,8 +350,8 @@ def update(teacher_id):
 
         if any(key not in data for key in ("Cedula", "Nombre", "Apellido", "Sexo", "Telefono", "Direccion", "Ocupacion", "Horas", "Materias")):
             raise MissingEntityData("No se recibieron datos suficientes")
-        elif not Validations.is_ci(data["Cedula"]):
-            raise ValidationError("El número de Cédula del docente tiene un formato incorrecto")
+        elif not (str(data["Cedula"]).isdigit() and 5 <= len(str(data["Cedula"]).strip()) <= 8):
+            raise ValidationError("El número de Cédula del docente debe tener entre 5 y 8 dígitos numéricos")
         elif not Validations.is_name(data["Nombre"]):
             raise ValidationError("El nombre del docente tiene un formato incorrecto")
         elif not Validations.is_name(data["Apellido"]):
