@@ -1,5 +1,11 @@
 # Changelog de Cambios y Modificaciones
 
+## [2026-04-09] Feat: Validación estricta de teléfono para docentes
+
+### Añadido
+- **Frontend**: Se implementó validación de solo números y restricción de exactamente 7 dígitos para el campo de teléfono en el formulario de registro de docentes (`index.html`).
+- **Backend**: Se robusteció la validación en la API para asegurar que el número telefónico contenga exactamente 7 dígitos numéricos, aplicando mensajes de error más descriptivos en las rutas de creación y actualización de docentes.
+
 ## [2026-04-09] Fix (v2): Corrección de ruta estática para Asistencias (Admin)
 
 ### Solucionado

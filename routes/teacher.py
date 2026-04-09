@@ -57,7 +57,7 @@ def create_teacher():
         elif "Direccion" not in data or not data["Direccion"]:
             raise MissingEntityData("La dirección del docente es requerida")
         elif not Validations.is_phone(data["Telefono"]):
-            raise ValidationError("El teléfono del docente tiene un formato incorrecto")
+            raise ValidationError("El teléfono del docente debe tener un prefijo válido y exactamente 7 dígitos numéricos (Ej: 0412-1234567)")
         elif "Email" not in data or not data["Email"]:
             raise MissingEntityData("El email del docente es requerido")
         elif not Validations.is_email(data["Email"]):
@@ -359,7 +359,7 @@ def update(teacher_id):
         elif data["Sexo"] not in ["Masculino", "Femenino"]:
             raise ValidationError("El sexo del docente tiene un formato incorrecto")
         elif not Validations.is_phone(data["Telefono"]):
-            raise ValidationError("El teléfono del docente tiene un formato incorrecto")
+            raise ValidationError("El teléfono del docente debe tener un prefijo válido y exactamente 7 dígitos numéricos (Ej: 0412-1234567)")
         elif not Validations.is_address(data["Direccion"]):
             raise ValidationError("La dirección del docente tiene un formato incorrecto")
         elif not Validations.is_occupation(data["Ocupacion"]):
