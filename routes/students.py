@@ -216,8 +216,8 @@ def create():
         return jsonify({"message": "Estudiante registrado con éxito en estado revisión. Sección: Por asignar"}), 201
     except Exception as err:
         conn.rollback()
-        logger.error(str(err))
-        return jsonify({"message": str(err)}), 500
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
     finally:
         cursor.close()
 
