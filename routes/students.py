@@ -175,7 +175,7 @@ def create():
 
         cursor.execute("""INSERT INTO "Estudiante" ("FechaNacimiento", "Parentesco", "DatosPersonaId", "RepresentanteId") 
                            VALUES (%s,%s,%s,%s) RETURNING "EstudianteId";""",
-                        (date(data["FechaNacimiento"]), data["Parentesco"], dp_id, data["IdRepresentante"]))
+                        (datetime.strptime(data["FechaNacimiento"], "%d/%m/%Y"), data["Parentesco"], dp_id, data["IdRepresentante"]))
         est_id = cursor.fetchone()[0]
 
         cursor.execute('INSERT INTO "EstadoEstudiante" ("EstudianteId", "Estado") VALUES (%s, \'revision\')', (est_id,))
