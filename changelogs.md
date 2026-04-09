@@ -1,5 +1,19 @@
 # Changelog de Cambios y Modificaciones
 
+## [2026-04-09] Fix (v2): Corrección de ruta estática para Asistencias (Admin)
+
+### Solucionado
+- **Frontend (Layout)**: Se corrigió el enlace en `src/scripts/layout.js` cambiando el endpoint dinámico `/admin/asistencia/gestion` por la ruta estática `/app/admin/asistencia/admin_asistencia.html`. Este cambio resuelve el error 404 persistente cuando se navega desde el servidor de desarrollo del frontend, el cual no tenía visibilidad del endpoint de Flask.
+
+## [2026-04-09] Fix: Corrección definitiva de enrutamiento en Asistencias (Admin)
+
+### Solucionado
+- **Backend (Config)**: Se configuró `utils/config.py` para soportar múltiples carpetas de plantillas, permitiendo que Flask busque archivos HTML tanto en la carpeta de aplicaciones como en la carpeta del frontend (`romulo-website`).
+- **Backend (Router)**: Se actualizó la ruta en `routes/assistance.py` para usar `render_template` en lugar de `send_file`. El nuevo endpoint es `/admin/asistencia/gestion`, lo cual evita conflictos con rutas estáticas previas y asegura que la página se renderice con todos sus estilos y scripts.
+- **Frontend (Layout)**: Se actualizaron los enlaces en `src/scripts/layout.js` y `src/components/layout/sidebar.html` para que apunten al nuevo endpoint de Flask. Esto soluciona de forma definitiva el error que mostraba un índice de directorio al usuario.
+
+
+
 ## [2026-04-06] Refactor: Período escolar automático y de solo lectura en Horarios
 
 ### Modificado

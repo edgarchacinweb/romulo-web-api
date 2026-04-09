@@ -1,4 +1,5 @@
-from flask import Blueprint, jsonify, request, Response
+from flask import Blueprint, jsonify, request, Response, send_file, render_template
+import os
 from utils.handler import exception_handler
 from utils.helpers import number_to_letter
 from utils.Security import Security
@@ -504,3 +505,17 @@ def get_admin_dashboard_today():
         return jsonify(ex[0]), ex[1]
     finally:
         if cursor: cursor.close()
+
+
+# --- RUTA PARA SERVIR EL FRONTEND DE GESTIÓN DE ASISTENCIAS (V2: RENDER_TEMPLATE) ---
+@assistance_bp.route("/admin/asistencia/gestion", methods=["GET"])
+def admin_assistance_view():
+    """
+    Ruta para servir la vista de gestión de asistencias del administrador.
+    Utiliza render_template apuntando al archivo en la carpeta 'romulo-website'.
+    """
+    try:
+        # Puesto que 'romulo-website' está en template_folder, podemos usar el path relativo a ella
+        return render_template("app/admin/asistencia/admin_asistencia.html")
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
