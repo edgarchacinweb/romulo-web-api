@@ -384,7 +384,7 @@ def get_admin_report_lapso():
 
         seccion_int = int(seccion_raw)
 
-        # Usamos la consulta maestra agrupada, AHORA INCLUYENDO dp."Cedula"
+        # Usamos la consulta maestra agrupada, AHORA INCLUYENDO dp."Cedula" y DATOS DEL DOCENTE
         query = """
             SELECT 
                 e."EstudianteId",
@@ -393,6 +393,8 @@ def get_admin_report_lapso():
                 dp."Cedula", 
                 m."Nombre" AS "NombreMateria",
                 l."Numero" AS "LapsoNumero",
+                dp_doc."Nombre" AS "NombreDocente",
+                dp_doc."Apellido" AS "ApellidoDocente",
                 SUM(CASE WHEN a."Activo" = true THEN 1 ELSE 0 END) AS "TotalAsistencias",
                 SUM(CASE WHEN a."Activo" = false THEN 1 ELSE 0 END) AS "TotalInasistencias"
             FROM "Asistencia" a
@@ -400,6 +402,8 @@ def get_admin_report_lapso():
             JOIN "DatosPersona" dp ON e."DatosPersonaId" = dp."DatosPersonaId"
             JOIN "Clase" c ON a."ClaseId" = c."ClaseId"
             JOIN "Materia" m ON c."MateriaId" = m."MateriaId"
+            JOIN "Docente" d ON c."DocenteId" = d."DocenteId"
+            JOIN "DatosPersona" dp_doc ON d."DatosPersonaId" = dp_doc."DatosPersonaId"
             JOIN "Lapso" l ON a."FechaCreacion"::date BETWEEN l."FechaInicio" AND l."FechaFin"
             WHERE c."CursoId" = %s AND c."Seccion" = %s AND l."AñoEscolar" = %s
         """
@@ -409,8 +413,8 @@ def get_admin_report_lapso():
             query += ' AND c."MateriaId" = %s'
             params.append(materia_id)
 
-        # Añadimos dp."Cedula" al GROUP BY
-        query += ' GROUP BY e."EstudianteId", dp."Nombre", dp."Apellido", dp."Cedula", m."Nombre", l."Numero" ORDER BY dp."Apellido" ASC, dp."Nombre" ASC, m."Nombre" ASC, l."Numero" ASC'
+        # Añadimos dp."Cedula" y datos del docente al GROUP BY
+        query += ' GROUP BY e."EstudianteId", dp."Nombre", dp."Apellido", dp."Cedula", m."Nombre", l."Numero", dp_doc."Nombre", dp_doc."Apellido" ORDER BY dp."Apellido" ASC, dp."Nombre" ASC, m."Nombre" ASC, l."Numero" ASC'
 
         cursor.execute(query, tuple(params))
         rows = cursor.fetchall()
@@ -423,19 +427,21 @@ def get_admin_report_lapso():
             cedula = r[3]
             materia = r[4]
             lapso = int(r[5])
-            asistencias = int(r[6])
-            inasistencias = int(r[7])
+            nombre_docente = f"{r[6]} {r[7]}".strip() # AGREGADO
+            asistencias = int(r[8])
+            inasistencias = int(r[9])
 
             if est_id not in estudiantes_map:
                 estudiantes_map[est_id] = {
                     "EstudianteId": est_id,
                     "NombreEstudiante": nombre_completo,
-                    "Cedula": cedula, # AGREGADA AL JSON
+                    "Cedula": cedula,
                     "Materias": {}
                 }
 
             if materia not in estudiantes_map[est_id]["Materias"]:
                 estudiantes_map[est_id]["Materias"][materia] = {
+                    "Docente": nombre_docente, # AGREGADO
                     "1": {"A": 0, "I": 0},
                     "2": {"A": 0, "I": 0},
                     "3": {"A": 0, "I": 0}

@@ -6,6 +6,7 @@
 - **Backend (API)**: Nueva ruta `/assistance/allowed_days` que consulta la tabla `Horario` para devolver los días de la semana (Lunes a Viernes) en los que un docente tiene clases asignadas para una materia y sección específica.
 - **Frontend (JS)**: Implementación de lógica dinámica en `assistancemanager.js` para cargar los días permitidos desde el backend al seleccionar la materia y sección.
 - **Frontend (Validación)**: Se añadió una validación estricta al selector de fecha (`dateInput`). Si el usuario selecciona un día que no está en su horario para esa clase, el sistema muestra un mensaje de error descriptivo, limpia el campo de fecha y detiene el proceso de carga, asegurando la integridad de los registros de asistencia.
+- **Frontend (Regla de Negocio)**: Se bloqueó la selección y el registro de fechas futuras mediante el atributo `max` en el calendario y una validación manual redundante que vacía el input y alerta al docente si intenta adelantar asistencias.
 - **Frontend (UX)**: Mensajes de alerta personalizados que informan al docente exactamente qué días tiene permitidos para la sección seleccionada.
 
 ### Solucionado
