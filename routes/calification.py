@@ -25,6 +25,11 @@ def create():
 
         if not payload or payload["role"] != Rol.ADMIN.name and payload["role"] != Rol.TEACHER.name:
             raise Unauthorized()
+            
+        from utils.lapso_rules import LapsoRules
+        status = LapsoRules.is_calification_open()
+        if not status["is_open"]:
+            raise Unauthorized("El proceso de carga de calificaciones se encuentra cerrado")
         
         data = request.get_json()
 

@@ -152,3 +152,27 @@ def list():
         return jsonify(ex[0]), ex[1]
     finally:
         cursor.close()
+
+@lapsos_bp.route("/lapsos/status_carga", methods=["GET"])
+def get_status_carga():
+    from utils.lapso_rules import LapsoRules
+    try:
+        payload = Security.verify_token(request.headers)
+        if not payload or payload["role"] not in [Rol.ADMIN.name, Rol.TEACHER.name]:
+            raise Unauthorized()
+            
+        status = LapsoRules.is_calification_open()
+        
+        return jsonify({
+            "status": "OPEN" if status["is_open"] else "CLOSED",
+            "lapso": {"LapsoId": status["lapso_id"]}
+        }), 200
+    except Exception as err:
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+
+@lapsos_bp.route("/lapsos/test_debug", methods=["GET"])
+def test_debug():
+    from utils.lapso_rules import LapsoRules
+    LapsoRules.is_calification_open()
+    return "OK", 200
