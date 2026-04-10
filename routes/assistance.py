@@ -211,6 +211,88 @@ def get_class_students():
     finally:
         if cursor: cursor.close()
 
+# --- NUEVA RUTA: OBTENER DÍAS PERMITIDOS SEGÚN HORARIO ---
+@assistance_bp.route("/assistance/allowed_days", methods=["GET"])
+def get_allowed_days():
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+    try:
+        payload = Security.verify_token(request.headers)
+        if not payload or payload["role"] != Rol.TEACHER.name:
+            raise Unauthorized("Acceso denegado.")
+
+        usuario_id = payload["id"]
+        materia_id = request.args.get("materiaId")
+        year_str = request.args.get("year")   
+        seccion_raw = request.args.get("section") 
+
+        if not materia_id or not year_str or not seccion_raw:
+            raise ValidationError("Faltan parámetros de búsqueda (materia, año o sección).")
+
+        # 1. Obtener DocenteId
+        cursor.execute("""
+            SELECT d."DocenteId" 
+            FROM "Docente" d
+            JOIN "Usuario" u ON d."DatosPersonaId" = u."DatosPersona"
+            WHERE u."UsuarioId" = %s
+        """, (usuario_id,))
+        
+        docente_row = cursor.fetchone()
+        if not docente_row:
+             raise ValidationError("Docente no encontrado")
+        docente_id = docente_row[0]
+
+        # 2. Obtener Grado y CursoId
+        try:
+            grado_num = int(year_str[0])
+            seccion_int = int(seccion_raw) 
+        except:
+            raise ValidationError("Formato de año o sección inválido.")
+
+        cursor.execute('SELECT "CursoId" FROM "Curso" WHERE "Grado" = %s', (grado_num,))
+        curso_row = cursor.fetchone()
+        if not curso_row:
+            raise Exception(f"Grado {grado_num} no encontrado.")
+        curso_id = curso_row[0]
+
+        # 3. Obtener Periodo Escolar Activo
+        cursor.execute('SELECT "PeriodoEscolarId" FROM "PeriodoEscolar" WHERE "Activo" = TRUE LIMIT 1')
+        periodo_row = cursor.fetchone()
+        if not periodo_row:
+            raise Exception("No hay un periodo escolar activo.")
+        periodo_id = periodo_row[0]
+
+        # 4. Consultar días en el horario
+        cursor.execute("""
+            SELECT DISTINCT "Dia" FROM "Horario"
+            WHERE "DocenteId" = %s 
+              AND "MateriaId" = %s 
+              AND "CursoId" = %s 
+              AND "Seccion" = %s 
+              AND "PeriodoEscolarId" = %s
+        """, (docente_id, materia_id, curso_id, seccion_int, periodo_id))
+
+        days_rows = cursor.fetchall()
+        
+        # Mapeo de nombres de días a números de JS (getDay(): 1=Lunes, 2=Martes, 3=Miércoles, 4=Jueves, 5=Viernes)
+        day_map = {
+            "Lunes": 1,
+            "Martes": 2,
+            "Miércoles": 3,
+            "Jueves": 4,
+            "Viernes": 5
+        }
+
+        allowed_days = [day_map[row[0]] for row in days_rows if row[0] in day_map]
+
+        return jsonify({"allowed_days": allowed_days}), 200
+
+    except Exception as err:
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        if cursor: cursor.close()
+
 # --- REPORTE DIARIO PARA ADMINISTRADOR ---
 @assistance_bp.route("/assistance/admin/report", methods=["GET"])
 def get_admin_report():

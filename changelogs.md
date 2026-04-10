@@ -1,5 +1,16 @@
 # Changelog de Cambios y Modificaciones
 
+## [2026-04-09] Feat: Validación de días permitidos para registro de asistencia (Docente)
+
+### Añadido
+- **Backend (API)**: Nueva ruta `/assistance/allowed_days` que consulta la tabla `Horario` para devolver los días de la semana (Lunes a Viernes) en los que un docente tiene clases asignadas para una materia y sección específica.
+- **Frontend (JS)**: Implementación de lógica dinámica en `assistancemanager.js` para cargar los días permitidos desde el backend al seleccionar la materia y sección.
+- **Frontend (Validación)**: Se añadió una validación estricta al selector de fecha (`dateInput`). Si el usuario selecciona un día que no está en su horario para esa clase, el sistema muestra un mensaje de error descriptivo, limpia el campo de fecha y detiene el proceso de carga, asegurando la integridad de los registros de asistencia.
+- **Frontend (UX)**: Mensajes de alerta personalizados que informan al docente exactamente qué días tiene permitidos para la sección seleccionada.
+
+### Solucionado
+- **Fix**: Se corrigió el error de validación prematura en el input de fecha de asistencias al escribir el año manualmente. Se mejoró la UX moviendo la alerta de "Día inválido" al evento de clic del botón "Cargar Estudiantes", permitiendo que el docente complete la fecha sin interrupciones.
+
 ## [2026-04-09] Feat: Validación estricta de teléfono para docentes
 
 ### Añadido
