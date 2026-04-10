@@ -1,6 +1,6 @@
 Today: 2026-04-10
-Lapsos: {1: {'id': 'e11436de-94f2-4174-8239-2bcd93927c6c', 'inicio': datetime.date(2025, 10, 1), 'fin': datetime.date(2025, 12, 15)}, 2: {'id': '72a88a36-3097-4ebb-bfa6-e30f26528f3f', 'inicio': datetime.date(2026, 1, 1), 'fin': datetime.date(2026, 4, 4)}, 3: {'id': '29dc1011-c795-43cf-bfbd-49bb26e887a1', 'inicio': datetime.date(2026, 4, 5), 'fin': datetime.date(2026, 7, 20)}}
+Lapsos: {1: {'id': 'b8d88f75-c2db-445a-a9c8-4d6d318e6828', 'inicio': datetime.date(2025, 10, 1), 'fin': datetime.date(2025, 12, 15)}, 2: {'id': 'f766745e-bf39-4666-ae68-85ff4ad6d73f', 'inicio': datetime.date(2026, 1, 1), 'fin': datetime.date(2026, 4, 4)}, 3: {'id': '2d1cbeab-f040-4455-9d88-b1c79bbca473', 'inicio': datetime.date(2026, 4, 5), 'fin': datetime.date(2026, 4, 16)}}
 L1: open_date=2025-12-08, close_date=2026-01-01
 L2: open_date=2026-03-28, close_date=2026-04-05
-L3: open_date=2026-07-13, close_date=2026-07-20
-Result: {'is_open': False, 'lapso_id': None}
+L3: open_date=2026-04-09, close_date=2026-04-16
+Result: {'is_open': True, 'lapso_id': '2d1cbeab-f040-4455-9d88-b1c79bbca473'}

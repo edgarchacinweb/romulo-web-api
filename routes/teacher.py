@@ -505,3 +505,62 @@ def get_subjects():
     finally:
         cursor.close()
 
+@teacher_bp.route("/teacher/assignments", methods=["GET"])
+def get_assignments():
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+    try:
+        payload = Security.verify_token(request.headers)
+        if not payload or payload["role"] != Rol.TEACHER.name:
+            raise Unauthorized()
+
+        # Obtener el Periodo Escolar Activo
+        cursor.execute("SELECT \"PeriodoEscolarId\" FROM \"PeriodoEscolar\" WHERE \"Activo\"=true ORDER BY \"FechaInicio\" DESC LIMIT 1;")
+        periodo_row = cursor.fetchone()
+        if not periodo_row:
+            return jsonify([]), 200
+            
+        periodo_id = periodo_row[0]
+
+        # Obtener el ID del docente
+        cursor.execute(
+            """
+            SELECT d."DocenteId" FROM "Usuario" AS u INNER JOIN "Docente" AS d ON d."DatosPersonaId"=u."DatosPersona" WHERE u."UsuarioId"=%s;
+            """,
+            (payload["id"],)
+        )
+        teacher_row = cursor.fetchone()
+        if not teacher_row:
+            raise EntityNotFound("No se encontró el docente")
+            
+        teacher_id = teacher_row[0]
+
+        # Traer Grados, Secciones y Materias únicas asociadas al docente en el periodo activo
+        cursor.execute(
+            """
+            SELECT DISTINCT h."CursoId", c."Grado", h."Seccion", h."MateriaId", m."Nombre" 
+            FROM "Horario" AS h 
+            INNER JOIN "Curso" AS c ON h."CursoId"=c."CursoId" 
+            INNER JOIN "Materia" AS m ON h."MateriaId"=m."MateriaId" 
+            WHERE h."DocenteId"=%s AND h."PeriodoEscolarId"=%s
+            ORDER BY c."Grado", h."Seccion", m."Nombre";
+            """,
+            (teacher_id, periodo_id)
+        )
+
+        rows = cursor.fetchall()
+        
+        return jsonify([{
+            "CursoId": r[0],
+            "Grado": r[1],
+            "Seccion": r[2],
+            "MateriaId": r[3],
+            "MateriaNombre": r[4]
+        } for r in rows]), 200
+
+    except Exception as err:
+        conn.rollback()
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
