@@ -706,3 +706,38 @@ def download_enrollment_form(id):
         return jsonify({"message": f"Error interno: {str(err)}"}), 500
     finally:
         cursor.close()
+
+# --- 12. OBTENER MATERIAS DE UN ESTUDIANTE ---
+@student_bp.route("/students/<string:id>/subjects", methods=["GET"])
+def get_student_subjects(id):
+    conn, cursor = get_db()
+    try:
+        query = """
+            SELECT m."MateriaId", m."Nombre"
+            FROM "Materia" m
+            JOIN "MateriaHorasAcademicas" mha ON m."MateriaId" = mha."MateriaId"
+            JOIN "CursoEstudiante" ce ON mha."CursoId" = ce."CursoId"
+            WHERE ce."EstudianteId" = %s AND m."Activo" = TRUE
+            -- Filtrar por el último periodo escolar inscrito si es necesario, 
+            -- por ahora obtenemos el más reciente o el activo
+            ORDER BY ce."PeriodoEscolarId" DESC, m."Nombre" ASC
+        """
+        cursor.execute(query, (id,))
+        rows = cursor.fetchall()
+        
+        # Como puede traer de múltiples periodos si hay histórico, tomaremos el primer set
+        # usando un DISTINCT manual o ajustando la query. Para simplificar, agrupamos por id
+        subjects_dict = {}
+        for r in rows:
+            if r[0] not in subjects_dict:
+                subjects_dict[r[0]] = {
+                    "id": r[0],
+                    "name": r[1]
+                }
+        
+        return jsonify(list(subjects_dict.values())), 200
+    except Exception as err:
+        conn.rollback()
+        return jsonify({"message": str(err)}), 500
+    finally:
+        cursor.close()
