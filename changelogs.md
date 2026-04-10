@@ -1,5 +1,12 @@
 # Changelog de Cambios y Modificaciones
 
+## [2026-04-10] Feat: Visualización dinámica de Notas para Administradores
+
+### Añadido
+- **Backend (API)**: Se actualizó la ruta `/calification/student/<student_id>` para realizar un `JOIN` entre las tablas `Nota` y `Lapso`. Esto permite devolver no solo la ponderación, sino a qué lapso numérico de 1 a 3 pertenece dicha nota.
+- **Frontend (JS)**: Modificado `calificationsmanager.js` en el modal de Administrador para hacer fetch dual de materias e historial de calificaciones, e integrar la respuesta realizando un mapeo estricto por `MateriaId` y asignando la nota a su `LapsoNumero` correspondiente.
+- **Cálculo Automático**: Aprovechando la función nativa Vanilla JS `updateSubjectSummary`, las notas inyectadas en los inputs son reconocidas inmediatamente, y la función recalcula en tiempo real el promedio de la materia, dictaminando dinámicamente si el estado final es Aprobado o Reprobado.
+
 ## [2026-04-09] Feat: Validación de días permitidos para registro de asistencia (Docente)
 
 ### Añadido

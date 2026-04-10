@@ -109,7 +109,12 @@ def get_by_student(student_id):
         if not payload or payload["role"] != Rol.ADMIN.name and payload["role"] != Rol.PARENT.name:
             raise Unauthorized()
         
-        cursor.execute("""SELECT "NotaId", "Ponderacion", "MateriaId", "EstudianteId", "LapsoId" FROM "Nota" WHERE "EstudianteId"=%s;""", (student_id,))
+        cursor.execute("""
+            SELECT n."NotaId", n."Ponderacion", n."MateriaId", n."EstudianteId", n."LapsoId", l."Numero"
+            FROM "Nota" n
+            JOIN "Lapso" l ON n."LapsoId" = l."LapsoId"
+            WHERE n."EstudianteId"=%s;
+        """, (student_id,))
         rows = cursor.fetchall()
 
         if len(rows) == 0:
@@ -120,7 +125,8 @@ def get_by_student(student_id):
             "Ponderacion": n[1],
             "MateriaId": n[2],
             "EstudianteId": n[3],
-            "LapsoId": n[4]
+            "LapsoId": n[4],
+            "LapsoNumero": n[5]
         } for n in rows]), 200
     except Exception as err:
         ex = exception_handler(err)
