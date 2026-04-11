@@ -187,12 +187,9 @@ def get_status_carga():
         if not payload or payload["role"] not in [Rol.ADMIN.name, Rol.TEACHER.name]:
             raise Unauthorized()
             
-        status = LapsoRules.is_calification_open()
+        status = LapsoRules.get_open_lapsos_status()
         
-        return jsonify({
-            "status": "OPEN" if status["is_open"] else "CLOSED",
-            "lapso": {"LapsoId": status["lapso_id"]}
-        }), 200
+        return jsonify(status), 200
     except Exception as err:
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
@@ -200,5 +197,5 @@ def get_status_carga():
 @lapsos_bp.route("/lapsos/test_debug", methods=["GET"])
 def test_debug():
     from utils.lapso_rules import LapsoRules
-    LapsoRules.is_calification_open()
-    return "OK", 200
+    status = LapsoRules.get_open_lapsos_status()
+    return jsonify(status), 200

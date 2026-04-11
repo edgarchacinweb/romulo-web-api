@@ -1,5 +1,11 @@
 # Changelog de Cambios y Modificaciones
 
+## [2026-04-11] Feat: Apertura Progresiva de Casillas de Notas
+
+### Añadido
+- **Backend (API)**: Se actualizó `utils/lapso_rules.py` y `routes/lapsos.py` con una nueva regla estricta: Una casilla específica se habilita ÚNICAMENTE cuando la fecha actual es igual o mayor a la Fecha de cierre del lapso menos 7 días. El nuevo método `get_open_lapsos_status` evalúa y retorna un objeto de variables booleanas para cada lapso.
+- **Backend (API)**: En `routes/calification.py`, ahora se valida que el POST contenga notas emitidas solo hacia identificadores dentro de la lista `.open_lapso_ids`. Se evitan guardados prematuros de calificaciones.
+- **Frontend (JS)**: Componente `calificationsmanager.js` enlazado con la ruta de estátuses y renderizado dinámico de las casillas `input`. Al iniciar, los lapsos que no hayan transigido fecha apertura comenzarán inhabilitados (atributo `disabled`) y conservarán dicha restricción perennemente hasta que la etapa final del lapso converja en el año. A final de año, las tres permanecen abiertas conforme a la directiva de negocio.
 ## [2026-04-11] Refactor: Migración de consultas Lapso a PeriodoEscolarId
 
 ### Modificado

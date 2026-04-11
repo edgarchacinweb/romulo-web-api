@@ -28,9 +28,11 @@ def create():
             raise Unauthorized()
             
         from utils.lapso_rules import LapsoRules
-        status = LapsoRules.is_calification_open()
-        if not status["is_open"]:
-            raise Unauthorized("El proceso de carga de calificaciones se encuentra cerrado")
+        status = LapsoRules.get_open_lapsos_status()
+        
+        # Verify if there is any lapso open
+        if len(status["open_lapso_ids"]) == 0:
+            raise Unauthorized("El proceso de carga de calificaciones se encuentra cerrado. Ningún lapso está abierto.")
         
         data = request.get_json()
 
@@ -59,6 +61,10 @@ def create():
                 raise ValidationError("El lapso es requerido")
             elif not Validations.is_uuid(item["LapsoId"]):
                 raise ValidationError("El ID del lapso es inválido")
+            
+            # Security rule: LapsoId must be inside open lapsos
+            if item["LapsoId"] not in status["open_lapso_ids"]:
+                raise Unauthorized("Está intentando cargar o modificar notas en un lapso que actualmente no se encuentra abierto.")
 
             # Buscar si existe una nota con la misma MateriaId, EstudianteId y LapsoId bloqueándola para la transacción
             cursor.execute("""SELECT "NotaId", "Ponderacion" FROM "Nota" WHERE "MateriaId"=%s AND "EstudianteId"=%s AND "LapsoId"=%s FOR UPDATE;""", (item["MateriaId"], item["EstudianteId"], item["LapsoId"]))
