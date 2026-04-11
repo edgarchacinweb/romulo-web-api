@@ -1,5 +1,63 @@
 # Changelog de Cambios y Modificaciones
 
+## [2026-04-11] Feat: Documentación Obligatoria en Inscripción de Estudiantes
+
+### Añadido
+- **Frontend (JS)**: Se modificó el script `adminregister.js` para exigir la carga de todos los documentos requeridos (Foto del Estudiante, Cédula de Identidad, Partida de Nacimiento, Notas Certificadas y Autorización si aplica). Se detiene el envío del formulario mostrando una alerta descriptiva sobre qué documento falta específico en caso de omisiones, considerando los casos donde la Cédula Estudiantil exonera cargar la CI física.
+- **Backend (API)**: En `routes/students.py` (`/students/create`), se implementó la validación estricta sobre `request.files` para los 4 documentos principales, y validación dinámica de "Autorización Legal" según el parentesco provisto, retornando un `error 400` y bloqueando la carga de datos malformados.
+## [2026-04-11] Feat: Apertura Progresiva de Casillas de Notas
+
+### Añadido
+- **Backend (API)**: Se actualizó `utils/lapso_rules.py` y `routes/lapsos.py` con una nueva regla estricta: Una casilla específica se habilita ÚNICAMENTE cuando la fecha actual es igual o mayor a la Fecha de cierre del lapso menos 7 días. El nuevo método `get_open_lapsos_status` evalúa y retorna un objeto de variables booleanas para cada lapso.
+- **Backend (API)**: En `routes/calification.py`, ahora se valida que el POST contenga notas emitidas solo hacia identificadores dentro de la lista `.open_lapso_ids`. Se evitan guardados prematuros de calificaciones.
+- **Frontend (JS)**: Componente `calificationsmanager.js` enlazado con la ruta de estátuses y renderizado dinámico de las casillas `input`. Al iniciar, los lapsos que no hayan transigido fecha apertura comenzarán inhabilitados (atributo `disabled`) y conservarán dicha restricción perennemente hasta que la etapa final del lapso converja en el año. A final de año, las tres permanecen abiertas conforme a la directiva de negocio.
+## [2026-04-11] Refactor: Migración de consultas Lapso a PeriodoEscolarId
+
+### Modificado
+- **Backend (API)**: Se actualizaron las consultas SQL en `routes/lapsos.py` (`get_current_lapsos`, `create_lapsos`, `get_lapsos`, `list`) para utilizar la nueva clave foránea `PeriodoEscolarId` en lugar de la eliminada columna de texto `AñoEscolar`.
+- **Backend (API)**: Se actualizó la consulta del reporte consolidado en `routes/assistance.py` (`get_admin_report_lapso`) para realizar un `JOIN` con la tabla `PeriodoEscolar` y extraer dinámicamente el año escolar desde sus fechas de inicio y fin. 
+- **Backend (API)**: En `utils/lapso_rules.py`, se modificó la carga de lapsos para conectarse con `PeriodoEscolar` y utilizar únicamente aquellas reglas que se apliquen al período activo, aumentando la robustez temporal del sistema.
+- **Formateo Seguro**: Las vistas de Frontend seguirán mostrando un texto como de costumbre, ya que las nuevas consultas en base de datos usan la función `CONCAT(EXTRACT(YEAR FROM pe."FechaInicio"), '-', EXTRACT(YEAR FROM pe."FechaFin")) AS "AñoEscolar"` para emular el formato antiguo y no romper el renderizado.
+
+## [2026-04-10] Feat: Visualización dinámica de Notas para Administradores
+
+### Añadido
+- **Backend (API)**: Se actualizó la ruta `/calification/student/<student_id>` para realizar un `JOIN` entre las tablas `Nota` y `Lapso`. Esto permite devolver no solo la ponderación, sino a qué lapso numérico de 1 a 3 pertenece dicha nota.
+- **Frontend (JS)**: Modificado `calificationsmanager.js` en el modal de Administrador para hacer fetch dual de materias e historial de calificaciones, e integrar la respuesta realizando un mapeo estricto por `MateriaId` y asignando la nota a su `LapsoNumero` correspondiente.
+- **Cálculo Automático**: Aprovechando la función nativa Vanilla JS `updateSubjectSummary`, las notas inyectadas en los inputs son reconocidas inmediatamente, y la función recalcula en tiempo real el promedio de la materia, dictaminando dinámicamente si el estado final es Aprobado o Reprobado.
+
+## [2026-04-09] Feat: Validación de días permitidos para registro de asistencia (Docente)
+
+### Añadido
+- **Backend (API)**: Nueva ruta `/assistance/allowed_days` que consulta la tabla `Horario` para devolver los días de la semana (Lunes a Viernes) en los que un docente tiene clases asignadas para una materia y sección específica.
+- **Frontend (JS)**: Implementación de lógica dinámica en `assistancemanager.js` para cargar los días permitidos desde el backend al seleccionar la materia y sección.
+- **Frontend (Validación)**: Se añadió una validación estricta al selector de fecha (`dateInput`). Si el usuario selecciona un día que no está en su horario para esa clase, el sistema muestra un mensaje de error descriptivo, limpia el campo de fecha y detiene el proceso de carga, asegurando la integridad de los registros de asistencia.
+- **Frontend (Regla de Negocio)**: Se bloqueó la selección y el registro de fechas futuras mediante el atributo `max` en el calendario y una validación manual redundante que vacía el input y alerta al docente si intenta adelantar asistencias.
+- **Frontend (UX)**: Mensajes de alerta personalizados que informan al docente exactamente qué días tiene permitidos para la sección seleccionada.
+
+### Solucionado
+- **Fix**: Se corrigió el error de validación prematura en el input de fecha de asistencias al escribir el año manualmente. Se mejoró la UX moviendo la alerta de "Día inválido" al evento de clic del botón "Cargar Estudiantes", permitiendo que el docente complete la fecha sin interrupciones.
+
+## [2026-04-09] Feat: Validación estricta de teléfono para docentes
+
+### Añadido
+- **Frontend**: Se implementó validación de solo números y restricción de exactamente 7 dígitos para el campo de teléfono en el formulario de registro de docentes (`index.html`).
+- **Backend**: Se robusteció la validación en la API para asegurar que el número telefónico contenga exactamente 7 dígitos numéricos, aplicando mensajes de error más descriptivos en las rutas de creación y actualización de docentes.
+
+## [2026-04-09] Fix (v2): Corrección de ruta estática para Asistencias (Admin)
+
+### Solucionado
+- **Frontend (Layout)**: Se corrigió el enlace en `src/scripts/layout.js` cambiando el endpoint dinámico `/admin/asistencia/gestion` por la ruta estática `/app/admin/asistencia/admin_asistencia.html`. Este cambio resuelve el error 404 persistente cuando se navega desde el servidor de desarrollo del frontend, el cual no tenía visibilidad del endpoint de Flask.
+
+## [2026-04-09] Fix: Corrección definitiva de enrutamiento en Asistencias (Admin)
+
+### Solucionado
+- **Backend (Config)**: Se configuró `utils/config.py` para soportar múltiples carpetas de plantillas, permitiendo que Flask busque archivos HTML tanto en la carpeta de aplicaciones como en la carpeta del frontend (`romulo-website`).
+- **Backend (Router)**: Se actualizó la ruta en `routes/assistance.py` para usar `render_template` en lugar de `send_file`. El nuevo endpoint es `/admin/asistencia/gestion`, lo cual evita conflictos con rutas estáticas previas y asegura que la página se renderice con todos sus estilos y scripts.
+- **Frontend (Layout)**: Se actualizaron los enlaces en `src/scripts/layout.js` y `src/components/layout/sidebar.html` para que apunten al nuevo endpoint de Flask. Esto soluciona de forma definitiva el error que mostraba un índice de directorio al usuario.
+
+
+
 ## [2026-04-06] Refactor: Período escolar automático y de solo lectura en Horarios
 
 ### Modificado

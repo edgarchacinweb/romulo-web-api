@@ -10,6 +10,7 @@ from utils.validations import Validations
 from utils.Security import Security
 from utils.logger import Logger
 from utils.handler import  exception_handler
+import uuid
 
 rep = NotaRep()
 logger = Logger()
@@ -25,15 +26,30 @@ def create():
 
         if not payload or payload["role"] != Rol.ADMIN.name and payload["role"] != Rol.TEACHER.name:
             raise Unauthorized()
+            
+        from utils.lapso_rules import LapsoRules
+        status = LapsoRules.get_open_lapsos_status()
+        
+        # Verify if there is any lapso open
+        if len(status["open_lapso_ids"]) == 0:
+            raise Unauthorized("El proceso de carga de calificaciones se encuentra cerrado. Ningún lapso está abierto.")
         
         data = request.get_json()
 
         for item in data:
-            if not item["Ponderacion"]:
+            if item.get("Ponderacion") is None or str(item["Ponderacion"]).strip() == "":
                 raise MissingEntityData("La ponderación es requerida")
-            elif int(item["Ponderacion"]) < 0 or int(item["Ponderacion"]) > 20:
-                raise ValidationError("La calificación debe estar en un rango de 1-20")
-            elif not item["MateriaId"]:
+            
+            try:
+                pond_val = int(item["Ponderacion"])
+            except ValueError:
+                raise ValidationError("La calificación debe ser un valor entero numérico")
+                
+            if not (0 <= pond_val <= 20):
+                raise ValidationError("La calificación debe estar en un rango de 0-20")
+            item["Ponderacion"] = pond_val
+            
+            if not item["MateriaId"]:
                 raise MissingEntityData("El ID de la materia es requerido")
             elif not Validations.is_uuid(item["MateriaId"]):
                 raise ValidationError("El ID de la materia es inválido")
@@ -45,14 +61,29 @@ def create():
                 raise ValidationError("El lapso es requerido")
             elif not Validations.is_uuid(item["LapsoId"]):
                 raise ValidationError("El ID del lapso es inválido")
+            
+            # Security rule: LapsoId must be inside open lapsos
+            if item["LapsoId"] not in status["open_lapso_ids"]:
+                raise Unauthorized("Está intentando cargar o modificar notas en un lapso que actualmente no se encuentra abierto.")
 
-            # Buscar si existe una nota con la misma MateriaId, EstudianteId y LapsoId
-            cursor.execute("""SELECT * FROM "Nota" WHERE "MateriaId"=%s AND "EstudianteId"=%s AND "LapsoId"=%s;""", (item["MateriaId"], item["EstudianteId"], item["LapsoId"]))
+            # Buscar si existe una nota con la misma MateriaId, EstudianteId y LapsoId bloqueándola para la transacción
+            cursor.execute("""SELECT "NotaId", "Ponderacion" FROM "Nota" WHERE "MateriaId"=%s AND "EstudianteId"=%s AND "LapsoId"=%s FOR UPDATE;""", (item["MateriaId"], item["EstudianteId"], item["LapsoId"]))
             row = cursor.fetchone()
             
-            # Actualizar Nota con nueva Ponderacion
+            # Actualizar Nota con nueva Ponderacion si ha sido modificada
             if row:
-                cursor.execute("""UPDATE "Nota" SET "Ponderacion"=%s WHERE "MateriaId"=%s AND "EstudianteId"=%s AND "LapsoId"=%s;""", (item["Ponderacion"], item["MateriaId"], item["EstudianteId"], item["LapsoId"]))
+                nota_id = row[0]
+                nota_anterior = float(row[1])
+                nota_nueva = float(item["Ponderacion"])
+
+                if nota_nueva != nota_anterior:
+                    justificacion = item.get("Justificacion")
+                    if not justificacion or str(justificacion).strip() == "":
+                        raise ValidationError("La justificación es obligatoria para editar una calificación ya existente.")
+                    
+                    cursor.execute("""UPDATE "Nota" SET "Ponderacion"=%s WHERE "NotaId"=%s;""", (item["Ponderacion"], nota_id))
+                    historial_id = str(uuid.uuid4())
+                    cursor.execute("""INSERT INTO "HistorialNota" ("HistorialId", "NotaId", "NotaAnterior", "NotaNueva", "Justificacion", "UsuarioId", "FechaCambio") VALUES (%s, %s, %s, %s, %s, %s, NOW());""", (historial_id, nota_id, nota_anterior, nota_nueva, justificacion, payload["id"]))
             # Crear nuevo registro de Nota
             else:
                 cursor.execute("""INSERT INTO "Nota" ("Ponderacion", "MateriaId", "EstudianteId", "LapsoId") VALUES (%s, %s, %s, %s);""", (item["Ponderacion"], item["MateriaId"], item["EstudianteId"], item["LapsoId"]))
@@ -104,7 +135,12 @@ def get_by_student(student_id):
         if not payload or payload["role"] != Rol.ADMIN.name and payload["role"] != Rol.PARENT.name:
             raise Unauthorized()
         
-        cursor.execute("""SELECT "NotaId", "Ponderacion", "MateriaId", "EstudianteId", "LapsoId" FROM "Nota" WHERE "EstudianteId"=%s;""", (student_id,))
+        cursor.execute("""
+            SELECT n."NotaId", n."Ponderacion", n."MateriaId", n."EstudianteId", n."LapsoId", l."Numero"
+            FROM "Nota" n
+            JOIN "Lapso" l ON n."LapsoId" = l."LapsoId"
+            WHERE n."EstudianteId"=%s;
+        """, (student_id,))
         rows = cursor.fetchall()
 
         if len(rows) == 0:
@@ -115,7 +151,8 @@ def get_by_student(student_id):
             "Ponderacion": n[1],
             "MateriaId": n[2],
             "EstudianteId": n[3],
-            "LapsoId": n[4]
+            "LapsoId": n[4],
+            "LapsoNumero": n[5]
         } for n in rows]), 200
     except Exception as err:
         ex = exception_handler(err)
@@ -123,3 +160,45 @@ def get_by_student(student_id):
     finally:
         cursor.close()
 
+@blueprint.route("/calification/history", methods=["GET"])
+def history():
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+    try:
+        payload = Security.verify_token(request.headers)
+        if not payload or payload["role"] != Rol.ADMIN.name and payload["role"] != Rol.TEACHER.name:
+            raise Unauthorized()
+        
+        query = """
+            SELECT 
+                DP."Nombre" || ' ' || DP."Apellido" AS Estudiante,
+                M."Nombre" AS Materia,
+                HN."NotaAnterior",
+                HN."NotaNueva",
+                HN."Justificacion",
+                TO_CHAR(HN."FechaCambio", 'YYYY-MM-DD HH24:MI:SS') AS FechaCambio
+            FROM "HistorialNota" HN
+            JOIN "Nota" N ON HN."NotaId" = N."NotaId"
+            JOIN "Estudiante" E ON N."EstudianteId" = E."EstudianteId"
+            JOIN "DatosPersona" DP ON E."DatosPersonaId" = DP."DatosPersonaId"
+            JOIN "Materia" M ON N."MateriaId" = M."MateriaId"
+            ORDER BY HN."FechaCambio" DESC;
+        """
+        cursor.execute(query)
+        rows = cursor.fetchall()
+        
+        result = [{
+            "Estudiante": r[0],
+            "Materia": r[1],
+            "NotaAnterior": r[2],
+            "NotaNueva": r[3],
+            "Justificacion": r[4],
+            "FechaCambio": r[5]
+        } for r in rows]
+
+        return jsonify(result), 200
+    except Exception as err:
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()

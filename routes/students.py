@@ -152,6 +152,19 @@ def create():
 
         data, files = request.form, request.files
         
+        archivos_requeridos = ["FotoCarnet", "DocPartidaNacimiento", "DocNotasCertificadas"]
+        if data.get("Cedula") and "-" in data["Cedula"]:
+            archivos_requeridos.append("DocDni")
+            
+        parentesco = data.get("Parentesco")
+        if parentesco and parentesco not in ["Madre", "Padre"]:
+            archivos_requeridos.append("DocAutorizacion")
+
+        for archivo in archivos_requeridos:
+            if archivo not in files or files[archivo].filename == '':
+                return jsonify({"message": f"Documentación incompleta. Falta el archivo: {archivo}"}), 400
+                
+        
         if "Nombre" in data: validar_solo_letras(data["Nombre"], "Nombre")
         if "Apellido" in data: validar_solo_letras(data["Apellido"], "Apellido")
         if "Cedula" in data: validar_cedula_estudiante(data["Cedula"])
@@ -300,10 +313,11 @@ def filter_students():
             query += """ AND (
                 dp."Nombre" ILIKE %s OR 
                 dp."Apellido" ILIKE %s OR 
-                CAST(dp."Cedula" AS TEXT) ILIKE %s
+                CAST(dp."Cedula" AS TEXT) ILIKE %s OR
+                (dp."Nombre" || ' ' || dp."Apellido") ILIKE %s
             )"""
             search_term = f"%{busqueda}%"
-            params.extend([search_term, search_term, search_term])
+            params.extend([search_term, search_term, search_term, search_term])
 
         query += ' ORDER BY e."EstudianteId", c."Grado" DESC'
 
@@ -705,5 +719,40 @@ def download_enrollment_form(id):
         traceback.print_exc()
         print("="*40 + "\n")
         return jsonify({"message": f"Error interno: {str(err)}"}), 500
+    finally:
+        cursor.close()
+
+# --- 12. OBTENER MATERIAS DE UN ESTUDIANTE ---
+@student_bp.route("/students/<string:id>/subjects", methods=["GET"])
+def get_student_subjects(id):
+    conn, cursor = get_db()
+    try:
+        query = """
+            SELECT m."MateriaId", m."Nombre"
+            FROM "Materia" m
+            JOIN "MateriaHorasAcademicas" mha ON m."MateriaId" = mha."MateriaId"
+            JOIN "CursoEstudiante" ce ON mha."CursoId" = ce."CursoId"
+            WHERE ce."EstudianteId" = %s AND m."Activo" = TRUE
+            -- Filtrar por el último periodo escolar inscrito si es necesario, 
+            -- por ahora obtenemos el más reciente o el activo
+            ORDER BY ce."PeriodoEscolarId" DESC, m."Nombre" ASC
+        """
+        cursor.execute(query, (id,))
+        rows = cursor.fetchall()
+        
+        # Como puede traer de múltiples periodos si hay histórico, tomaremos el primer set
+        # usando un DISTINCT manual o ajustando la query. Para simplificar, agrupamos por id
+        subjects_dict = {}
+        for r in rows:
+            if r[0] not in subjects_dict:
+                subjects_dict[r[0]] = {
+                    "id": r[0],
+                    "name": r[1]
+                }
+        
+        return jsonify(list(subjects_dict.values())), 200
+    except Exception as err:
+        conn.rollback()
+        return jsonify({"message": str(err)}), 500
     finally:
         cursor.close()

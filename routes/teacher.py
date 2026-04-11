@@ -48,8 +48,8 @@ def create_teacher():
             raise ValidationError("El sexo del docente tiene un formato incorrecto")
         elif "Cedula" not in data or not data["Cedula"]:
             raise MissingEntityData("La cédula del docente es requerida")
-        elif not Validations.is_ci(data["Cedula"]):
-            raise ValidationError("La cédula del docente tiene un formato incorrecto")
+        elif not (str(data["Cedula"]).isdigit() and 5 <= len(str(data["Cedula"]).strip()) <= 8):
+            raise ValidationError("La cédula del docente debe tener entre 5 y 8 dígitos numéricos")
         elif "Telefono" not in data or not data["Telefono"]:
             raise MissingEntityData("El teléfono del docente es requerido")
         elif "Ocupacion" not in data or not data["Ocupacion"]:
@@ -57,7 +57,7 @@ def create_teacher():
         elif "Direccion" not in data or not data["Direccion"]:
             raise MissingEntityData("La dirección del docente es requerida")
         elif not Validations.is_phone(data["Telefono"]):
-            raise ValidationError("El teléfono del docente tiene un formato incorrecto")
+            raise ValidationError("El teléfono del docente debe tener un prefijo válido y exactamente 7 dígitos numéricos (Ej: 0412-1234567)")
         elif "Email" not in data or not data["Email"]:
             raise MissingEntityData("El email del docente es requerido")
         elif not Validations.is_email(data["Email"]):
@@ -350,8 +350,8 @@ def update(teacher_id):
 
         if any(key not in data for key in ("Cedula", "Nombre", "Apellido", "Sexo", "Telefono", "Direccion", "Ocupacion", "Horas", "Materias")):
             raise MissingEntityData("No se recibieron datos suficientes")
-        elif not Validations.is_ci(data["Cedula"]):
-            raise ValidationError("El número de Cédula del docente tiene un formato incorrecto")
+        elif not (str(data["Cedula"]).isdigit() and 5 <= len(str(data["Cedula"]).strip()) <= 8):
+            raise ValidationError("El número de Cédula del docente debe tener entre 5 y 8 dígitos numéricos")
         elif not Validations.is_name(data["Nombre"]):
             raise ValidationError("El nombre del docente tiene un formato incorrecto")
         elif not Validations.is_name(data["Apellido"]):
@@ -359,7 +359,7 @@ def update(teacher_id):
         elif data["Sexo"] not in ["Masculino", "Femenino"]:
             raise ValidationError("El sexo del docente tiene un formato incorrecto")
         elif not Validations.is_phone(data["Telefono"]):
-            raise ValidationError("El teléfono del docente tiene un formato incorrecto")
+            raise ValidationError("El teléfono del docente debe tener un prefijo válido y exactamente 7 dígitos numéricos (Ej: 0412-1234567)")
         elif not Validations.is_address(data["Direccion"]):
             raise ValidationError("La dirección del docente tiene un formato incorrecto")
         elif not Validations.is_occupation(data["Ocupacion"]):
@@ -505,3 +505,62 @@ def get_subjects():
     finally:
         cursor.close()
 
+@teacher_bp.route("/teacher/assignments", methods=["GET"])
+def get_assignments():
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+    try:
+        payload = Security.verify_token(request.headers)
+        if not payload or payload["role"] != Rol.TEACHER.name:
+            raise Unauthorized()
+
+        # Obtener el Periodo Escolar Activo
+        cursor.execute("SELECT \"PeriodoEscolarId\" FROM \"PeriodoEscolar\" WHERE \"Activo\"=true ORDER BY \"FechaInicio\" DESC LIMIT 1;")
+        periodo_row = cursor.fetchone()
+        if not periodo_row:
+            return jsonify([]), 200
+            
+        periodo_id = periodo_row[0]
+
+        # Obtener el ID del docente
+        cursor.execute(
+            """
+            SELECT d."DocenteId" FROM "Usuario" AS u INNER JOIN "Docente" AS d ON d."DatosPersonaId"=u."DatosPersona" WHERE u."UsuarioId"=%s;
+            """,
+            (payload["id"],)
+        )
+        teacher_row = cursor.fetchone()
+        if not teacher_row:
+            raise EntityNotFound("No se encontró el docente")
+            
+        teacher_id = teacher_row[0]
+
+        # Traer Grados, Secciones y Materias únicas asociadas al docente en el periodo activo
+        cursor.execute(
+            """
+            SELECT DISTINCT h."CursoId", c."Grado", h."Seccion", h."MateriaId", m."Nombre" 
+            FROM "Horario" AS h 
+            INNER JOIN "Curso" AS c ON h."CursoId"=c."CursoId" 
+            INNER JOIN "Materia" AS m ON h."MateriaId"=m."MateriaId" 
+            WHERE h."DocenteId"=%s AND h."PeriodoEscolarId"=%s
+            ORDER BY c."Grado", h."Seccion", m."Nombre";
+            """,
+            (teacher_id, periodo_id)
+        )
+
+        rows = cursor.fetchall()
+        
+        return jsonify([{
+            "CursoId": r[0],
+            "Grado": r[1],
+            "Seccion": r[2],
+            "MateriaId": r[3],
+            "MateriaNombre": r[4]
+        } for r in rows]), 200
+
+    except Exception as err:
+        conn.rollback()
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()

@@ -21,7 +21,14 @@ def get_current_lapsos():
         #     raise Unauthorized()
 
         # Buscar los lapsos del año escolar actual (ordenados del 1 al 3)
-        cursor.execute('SELECT "LapsoId","Numero", "FechaInicio", "FechaFin", "AñoEscolar" FROM "Lapso" ORDER BY "Numero" ASC LIMIT 3;')
+        cursor.execute('''
+            SELECT l."LapsoId", l."Numero", l."FechaInicio", l."FechaFin", 
+                   CONCAT(EXTRACT(YEAR FROM pe."FechaInicio"), '-', EXTRACT(YEAR FROM pe."FechaFin")) AS "AñoEscolar" 
+            FROM "Lapso" l
+            JOIN "PeriodoEscolar" pe ON l."PeriodoEscolarId" = pe."PeriodoEscolarId"
+            WHERE pe."Activo" = TRUE
+            ORDER BY l."Numero" ASC LIMIT 3;
+        ''')
         rows = cursor.fetchall()
 
         if not rows:
@@ -66,14 +73,21 @@ def create_lapsos():
         if "lapsos" not in data or "año_escolar" not in data:
             raise BadRequest("Faltan los datos de los lapsos o el año escolar")
 
-        # 1. Eliminamos la configuración anterior de este año escolar para evitar duplicados
-        cursor.execute('DELETE FROM "Lapso" WHERE "AñoEscolar" = %s;', (data["año_escolar"],))
+        # 1. Obtenemos el Periodo Escolar Activo
+        cursor.execute('SELECT "PeriodoEscolarId" FROM "PeriodoEscolar" WHERE "Activo" = TRUE LIMIT 1')
+        periodo_row = cursor.fetchone()
+        if not periodo_row:
+            raise BadRequest("No hay un Periodo Escolar activo para configurar los lapsos.")
+        periodo_id = periodo_row[0]
 
-        # 2. Insertamos las 3 nuevas fechas
+        # 2. Eliminamos la configuración anterior de este año escolar para evitar duplicados
+        cursor.execute('DELETE FROM "Lapso" WHERE "PeriodoEscolarId" = %s;', (periodo_id,))
+
+        # 3. Insertamos las 3 nuevas fechas
         for lapso in data["lapsos"]:
             cursor.execute(
-                'INSERT INTO "Lapso" ("Numero", "FechaInicio", "FechaFin", "AñoEscolar") VALUES (%s, %s, %s, %s);',
-                (lapso["lapso"], lapso["fecha_inicio"], lapso["fecha_fin"], data["año_escolar"])
+                'INSERT INTO "Lapso" ("Numero", "FechaInicio", "FechaFin", "PeriodoEscolarId") VALUES (%s, %s, %s, %s);',
+                (lapso["lapso"], lapso["fecha_inicio"], lapso["fecha_fin"], periodo_id)
             )
         
         conn.commit()
@@ -103,7 +117,13 @@ def get_lapsos():
         if not payload or payload["role"] not in [Rol.ADMIN.name, Rol.TEACHER.name]:
             raise Unauthorized()
     
-        cursor.execute('SELECT "LapsoId", "Numero", "FechaInicio", "FechaFin", "AñoEscolar" FROM "Lapso" WHERE CURRENT_DATE BETWEEN "FechaInicio" AND "FechaFin";')
+        cursor.execute('''
+            SELECT l."LapsoId", l."Numero", l."FechaInicio", l."FechaFin", 
+                   CONCAT(EXTRACT(YEAR FROM pe."FechaInicio"), '-', EXTRACT(YEAR FROM pe."FechaFin")) AS "AñoEscolar" 
+            FROM "Lapso" l
+            JOIN "PeriodoEscolar" pe ON l."PeriodoEscolarId" = pe."PeriodoEscolarId"
+            WHERE CURRENT_DATE BETWEEN l."FechaInicio" AND l."FechaFin";
+        ''')
         rows = cursor.fetchall()
 
         if len(rows) == 0:
@@ -133,7 +153,13 @@ def list():
         if not payload or payload["role"] not in [Rol.ADMIN.name, Rol.TEACHER.name]:
             raise Unauthorized()
     
-        cursor.execute('SELECT "LapsoId", "Numero", "FechaInicio", "FechaFin", "AñoEscolar" FROM "Lapso" ORDER BY "FechaInicio" DESC')
+        cursor.execute('''
+            SELECT l."LapsoId", l."Numero", l."FechaInicio", l."FechaFin", 
+                   CONCAT(EXTRACT(YEAR FROM pe."FechaInicio"), '-', EXTRACT(YEAR FROM pe."FechaFin")) AS "AñoEscolar" 
+            FROM "Lapso" l
+            JOIN "PeriodoEscolar" pe ON l."PeriodoEscolarId" = pe."PeriodoEscolarId"
+            ORDER BY l."FechaInicio" DESC
+        ''')
         rows = cursor.fetchall()
 
         if len(rows) == 0:
@@ -152,3 +178,24 @@ def list():
         return jsonify(ex[0]), ex[1]
     finally:
         cursor.close()
+
+@lapsos_bp.route("/lapsos/status_carga", methods=["GET"])
+def get_status_carga():
+    from utils.lapso_rules import LapsoRules
+    try:
+        payload = Security.verify_token(request.headers)
+        if not payload or payload["role"] not in [Rol.ADMIN.name, Rol.TEACHER.name]:
+            raise Unauthorized()
+            
+        status = LapsoRules.get_open_lapsos_status()
+        
+        return jsonify(status), 200
+    except Exception as err:
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+
+@lapsos_bp.route("/lapsos/test_debug", methods=["GET"])
+def test_debug():
+    from utils.lapso_rules import LapsoRules
+    status = LapsoRules.get_open_lapsos_status()
+    return jsonify(status), 200

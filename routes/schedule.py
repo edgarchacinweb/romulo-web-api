@@ -177,6 +177,22 @@ def create():
             elif not Validations.is_day(item["Dia"]):
                 raise InvalidId("El día es inválido")
 
+            # Validación: Profesor Guía (Orientación y Convivencia) es único por período escolar
+            cursor.execute("SELECT \"MateriaId\" FROM \"Materia\" WHERE \"Nombre\" ILIKE '%ORIENTACION%' AND \"Nombre\" ILIKE '%CONVIVENCIA%' LIMIT 1")
+            orientacion_row = cursor.fetchone()
+            if orientacion_row and item["MateriaId"] == orientacion_row[0]:
+                cursor.execute("""
+                    SELECT c."Grado", h."Seccion" FROM "Horario" h
+                    JOIN "Curso" c ON h."CursoId" = c."CursoId"
+                    WHERE h."DocenteId" = %s AND h."MateriaId" = %s 
+                    AND h."PeriodoEscolarId" = %s AND (h."CursoId" != %s OR h."Seccion" != %s)
+                """, (item["DocenteId"], item["MateriaId"], periodo_escolar_id, item["CursoId"], item["Seccion"]))
+                guide_clash = cursor.fetchone()
+                if guide_clash:
+                    cursor.execute("SELECT \"Nombre\", \"Apellido\" FROM \"DatosPersona\" dp JOIN \"Docente\" d ON d.\"DatosPersonaId\" = dp.\"DatosPersonaId\" WHERE d.\"DocenteId\" = %s", (item["DocenteId"],))
+                    teacher_name = cursor.fetchone()
+                    raise ValidationError(f"Error: El docente {teacher_name[0]} {teacher_name[1]} ya es Profesor Guía de {guide_clash[0]}° {number_to_letter(int(guide_clash[1]))}. Seleccione otro docente.")
+
             # Validación Anti-Choques: Verificar si el docente ya tiene clase en el mismo bloque y día
             cursor.execute("""
                 SELECT c."Grado", h."Seccion" FROM "Horario" h

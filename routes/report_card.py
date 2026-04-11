@@ -9,6 +9,8 @@ from utils.validations import Validations
 from utils.logger import Logger
 from utils.Security import Security
 from utils.handler import exception_handler
+from database.connection import Connection
+from datetime import datetime
 
 rep = BoletaRep()
 logger = Logger()
@@ -105,3 +107,153 @@ def list():
     except Exception as err:
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
+
+@blueprint.route("/report-card/student/<string:student_id>", methods=["GET"])
+def get_student_card(student_id):
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+    try:
+        payload = Security.verify_token(request.headers)
+        if not payload or payload["role"] not in (Rol.ADMIN.name, Rol.PARENT.name):
+            raise Unauthorized()
+
+        if not Validations.is_uuid(student_id):
+            raise InvalidId(f"ID del estudiante inválido: {student_id}")
+
+        # 1. Obtener lapsos del periodo activo
+        cursor.execute('''
+            SELECT l."LapsoId", l."Numero", l."FechaInicio", l."FechaFin" 
+            FROM "Lapso" l
+            JOIN "PeriodoEscolar" pe ON l."PeriodoEscolarId" = pe."PeriodoEscolarId"
+            WHERE pe."Activo" = TRUE
+            ORDER BY l."Numero" ASC LIMIT 3;
+        ''')
+        lapsos_rows = cursor.fetchall()
+
+        if not lapsos_rows:
+            return jsonify({"message": "No hay lapsos configurados actualmente"}), 404
+
+        lapsos = []
+        now = datetime.now().date()
+        for r in lapsos_rows:
+            lapsos.append({
+                "id": r[0],
+                "numero": r[1],
+                "visible": now > r[3],
+                "fecha_fin": r[3]
+            })
+
+        # 2. Obtener grado del estudiante
+        cursor.execute('''
+            SELECT "CursoId", "Seccion" FROM "CursoEstudiante" 
+            WHERE "EstudianteId" = %s AND "PeriodoEscolarId" = (SELECT "PeriodoEscolarId" FROM "PeriodoEscolar" WHERE "Activo" = TRUE LIMIT 1);
+        ''', (student_id,))
+        curso_row = cursor.fetchone()
+        if not curso_row:
+             return jsonify({"message": "Estudiante no inscrito en el periodo actual"}), 404
+        
+        curso_id = curso_row[0]
+        seccion = curso_row[1]
+
+        # 3. Obtener materias del curso (con DISTINCT para evitar duplicados en la tabla de horas)
+        cursor.execute('''
+            SELECT DISTINCT m."MateriaId", m."Nombre" 
+            FROM "MateriaHorasAcademicas" mha
+            JOIN "Materia" m ON mha."MateriaId" = m."MateriaId"
+            WHERE mha."CursoId" = %s
+            ORDER BY m."Nombre" ASC;
+        ''', (curso_id,))
+        materias_rows = cursor.fetchall()
+
+        # 4. Obtener notas actuales
+        cursor.execute('''
+            SELECT "MateriaId", "LapsoId", "Ponderacion" 
+            FROM "Nota" 
+            WHERE "EstudianteId" = %s;
+        ''', (student_id,))
+        notas_rows = cursor.fetchall()
+        notas_dict = {(r[0], r[1]): r[2] for r in notas_rows}
+
+        # 5. Obtener inasistencias
+        inasistencias_result = []
+        for l in lapsos:
+            cursor.execute('''
+                SELECT c."MateriaId", COUNT(a."AsistenciaId") 
+                FROM "Asistencia" a
+                JOIN "Clase" c ON a."ClaseId" = c."ClaseId"
+                WHERE a."EstudianteId" = %s 
+                AND a."Activo" = FALSE
+                AND a."FechaCreacion"::date BETWEEN %s AND %s
+                GROUP BY c."MateriaId";
+            ''', (student_id, lapsos_rows[l["numero"]-1][2], lapsos_rows[l["numero"]-1][3]))
+            inasistencias_result.extend([(r[0], l["id"], r[1]) for r in cursor.fetchall()])
+
+        inasistencias_dict = {(r[0], r[1]): r[2] for r in inasistencias_result}
+
+        # 6. Construir respuesta final
+        reporte = []
+        lapso3_cerrado = lapsos[2]["visible"] if len(lapsos) >= 3 else False
+
+        # Agrupar registros por nombre de materia para consolidar duplicados por ID
+        materias_agrupadas = {}
+        for m_id, m_nombre in materias_rows:
+            if m_nombre not in materias_agrupadas:
+                materias_agrupadas[m_nombre] = []
+            materias_agrupadas[m_nombre].append(m_id)
+
+        for m_nombre, ids in materias_agrupadas.items():
+            row_data = {
+                "materia": m_nombre,
+                "lapsos": []
+            }
+            
+            total_notas = 0
+            count_notas = 0
+            total_inasistencias_materia = 0
+
+            for l in lapsos:
+                # Consolidar datos de todos los IDs vinculados a este nombre de materia
+                nota = None
+                inasistencia_lapso = 0
+                
+                for current_id in ids:
+                    # Priorizar el primer registro con nota encontrado
+                    val_nota = notas_dict.get((current_id, l["id"]))
+                    if val_nota is not None:
+                        nota = val_nota
+                    
+                    # Sumar inasistencias de todos los IDs
+                    inasistencia_lapso += inasistencias_dict.get((current_id, l["id"]), 0)
+                
+                total_inasistencias_materia += inasistencia_lapso
+                visible_nota = nota if l["visible"] else None
+                
+                row_data["lapsos"].append({
+                    "numero": l["numero"],
+                    "nota": visible_nota,
+                    "inasistencias": inasistencia_lapso
+                })
+
+                if visible_nota is not None:
+                    total_notas += visible_nota
+                    count_notas += 1
+
+            # Promedio Final: Solo si el 3er lapso está cerrado
+            promedio_final = None
+            if lapso3_cerrado and count_notas == 3:
+                promedio_final = round(total_notas / 3, 2)
+            
+            row_data["promedio_final"] = promedio_final
+            row_data["total_inasistencias"] = total_inasistencias_materia
+            reporte.append(row_data)
+
+        return jsonify({
+            "reporte": reporte,
+            "habilitar_pdf": lapso3_cerrado
+        }), 200
+
+    except Exception as err:
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
