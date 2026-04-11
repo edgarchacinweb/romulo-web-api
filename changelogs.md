@@ -1,5 +1,10 @@
 # Changelog de Cambios y Modificaciones
 
+## [2026-04-11] Feat: Documentación Obligatoria en Inscripción de Estudiantes
+
+### Añadido
+- **Frontend (JS)**: Se modificó el script `adminregister.js` para exigir la carga de todos los documentos requeridos (Foto del Estudiante, Cédula de Identidad, Partida de Nacimiento, Notas Certificadas y Autorización si aplica). Se detiene el envío del formulario mostrando una alerta descriptiva sobre qué documento falta específico en caso de omisiones, considerando los casos donde la Cédula Estudiantil exonera cargar la CI física.
+- **Backend (API)**: En `routes/students.py` (`/students/create`), se implementó la validación estricta sobre `request.files` para los 4 documentos principales, y validación dinámica de "Autorización Legal" según el parentesco provisto, retornando un `error 400` y bloqueando la carga de datos malformados.
 ## [2026-04-11] Feat: Apertura Progresiva de Casillas de Notas
 
 ### Añadido

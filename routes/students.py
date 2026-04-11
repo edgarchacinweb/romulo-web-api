@@ -152,6 +152,19 @@ def create():
 
         data, files = request.form, request.files
         
+        archivos_requeridos = ["FotoCarnet", "DocPartidaNacimiento", "DocNotasCertificadas"]
+        if data.get("Cedula") and "-" in data["Cedula"]:
+            archivos_requeridos.append("DocDni")
+            
+        parentesco = data.get("Parentesco")
+        if parentesco and parentesco not in ["Madre", "Padre"]:
+            archivos_requeridos.append("DocAutorizacion")
+
+        for archivo in archivos_requeridos:
+            if archivo not in files or files[archivo].filename == '':
+                return jsonify({"message": f"Documentación incompleta. Falta el archivo: {archivo}"}), 400
+                
+        
         if "Nombre" in data: validar_solo_letras(data["Nombre"], "Nombre")
         if "Apellido" in data: validar_solo_letras(data["Apellido"], "Apellido")
         if "Cedula" in data: validar_cedula_estudiante(data["Cedula"])
