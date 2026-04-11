@@ -214,7 +214,8 @@ CREATE TABLE "Lapso" (
 "Numero" INTEGER NOT NULL,
 "FechaInicio" DATE NOT NULL,
 "FechaFin" DATE NOT NULL,
-"AñoEscolar" VARCHAR(20) NOT NULL
+"AñoEscolar" VARCHAR(20) NOT NULL,
+"PeriodoEscolarId" UUID NOT NULL
 );
 
 CREATE TABLE "PeriodoCargaNota" (
@@ -232,6 +233,7 @@ CREATE TABLE "PeriodoCargaNota" (
 ALTER TABLE "Docente" ADD CONSTRAINT Docente_Minimo_Horas_Academicas CHECK ("Docente"."HorasAcademicas" >= 20);
 ALTER TABLE "MateriaHorasAcademicas" ADD CONSTRAINT MateriaHorasAcademicas_Minimo_Horas_Academicas CHECK ("MateriaHorasAcademicas"."HorasAcademicas" >= 0);
 ALTER TABLE "MateriaHorasAcademicas" ADD CONSTRAINT MateriaHorasAcademicas_Maximo_Horas_Academicas CHECK ("MateriaHorasAcademicas"."HorasAcademicas" <= 4);
+ALTER TABLE "Lapso" ADD FOREIGN KEY ("PeriodoEscolarId") REFERENCES "PeriodoEscolar" ("PeriodoEscolarId");
 ALTER TABLE "Incidencia" ADD FOREIGN KEY ("DatosPersonaId") REFERENCES "DatosPersona" ("DatosPersonaId");
 ALTER TABLE "Clase" ADD FOREIGN KEY ("CursoId") REFERENCES "Curso" ("CursoId");
 ALTER TABLE "Clase" ADD FOREIGN KEY ("DocenteId") REFERENCES "Docente" ("DocenteId");
