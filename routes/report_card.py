@@ -155,9 +155,9 @@ def get_student_card(student_id):
         curso_id = curso_row[0]
         seccion = curso_row[1]
 
-        # 3. Obtener materias del curso
+        # 3. Obtener materias del curso (con DISTINCT para evitar duplicados en la tabla de horas)
         cursor.execute('''
-            SELECT m."MateriaId", m."Nombre" 
+            SELECT DISTINCT m."MateriaId", m."Nombre" 
             FROM "MateriaHorasAcademicas" mha
             JOIN "Materia" m ON mha."MateriaId" = m."MateriaId"
             WHERE mha."CursoId" = %s
@@ -175,7 +175,6 @@ def get_student_card(student_id):
         notas_dict = {(r[0], r[1]): r[2] for r in notas_rows}
 
         # 5. Obtener inasistencias
-        # Nota: La consulta de inasistencias se hace filtrando por el rango de fechas de los lapsos
         inasistencias_result = []
         for l in lapsos:
             cursor.execute('''
@@ -195,9 +194,14 @@ def get_student_card(student_id):
         reporte = []
         lapso3_cerrado = lapsos[2]["visible"] if len(lapsos) >= 3 else False
 
-        for m in materias_rows:
-            m_id = m[0]
-            m_nombre = m[1]
+        # Agrupar registros por nombre de materia para consolidar duplicados por ID
+        materias_agrupadas = {}
+        for m_id, m_nombre in materias_rows:
+            if m_nombre not in materias_agrupadas:
+                materias_agrupadas[m_nombre] = []
+            materias_agrupadas[m_nombre].append(m_id)
+
+        for m_nombre, ids in materias_agrupadas.items():
             row_data = {
                 "materia": m_nombre,
                 "lapsos": []
@@ -205,19 +209,29 @@ def get_student_card(student_id):
             
             total_notas = 0
             count_notas = 0
-            total_inasistencias = 0
+            total_inasistencias_materia = 0
 
             for l in lapsos:
-                nota = notas_dict.get((m_id, l["id"]))
-                inasistencia = inasistencias_dict.get((m_id, l["id"]), 0)
-                total_inasistencias += inasistencia
+                # Consolidar datos de todos los IDs vinculados a este nombre de materia
+                nota = None
+                inasistencia_lapso = 0
                 
+                for current_id in ids:
+                    # Priorizar el primer registro con nota encontrado
+                    val_nota = notas_dict.get((current_id, l["id"]))
+                    if val_nota is not None:
+                        nota = val_nota
+                    
+                    # Sumar inasistencias de todos los IDs
+                    inasistencia_lapso += inasistencias_dict.get((current_id, l["id"]), 0)
+                
+                total_inasistencias_materia += inasistencia_lapso
                 visible_nota = nota if l["visible"] else None
                 
                 row_data["lapsos"].append({
                     "numero": l["numero"],
                     "nota": visible_nota,
-                    "inasistencias": inasistencia
+                    "inasistencias": inasistencia_lapso
                 })
 
                 if visible_nota is not None:
@@ -230,7 +244,7 @@ def get_student_card(student_id):
                 promedio_final = round(total_notas / 3, 2)
             
             row_data["promedio_final"] = promedio_final
-            row_data["total_inasistencias"] = total_inasistencias
+            row_data["total_inasistencias"] = total_inasistencias_materia
             reporte.append(row_data)
 
         return jsonify({
