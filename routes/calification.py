@@ -51,13 +51,23 @@ def create():
             elif not Validations.is_uuid(item["LapsoId"]):
                 raise ValidationError("El ID del lapso es inválido")
 
-            # Buscar si existe una nota con la misma MateriaId, EstudianteId y LapsoId
-            cursor.execute("""SELECT * FROM "Nota" WHERE "MateriaId"=%s AND "EstudianteId"=%s AND "LapsoId"=%s;""", (item["MateriaId"], item["EstudianteId"], item["LapsoId"]))
+            # Buscar si existe una nota con la misma MateriaId, EstudianteId y LapsoId bloqueándola para la transacción
+            cursor.execute("""SELECT "NotaId", "Ponderacion" FROM "Nota" WHERE "MateriaId"=%s AND "EstudianteId"=%s AND "LapsoId"=%s FOR UPDATE;""", (item["MateriaId"], item["EstudianteId"], item["LapsoId"]))
             row = cursor.fetchone()
             
-            # Actualizar Nota con nueva Ponderacion
+            # Actualizar Nota con nueva Ponderacion si ha sido modificada
             if row:
-                cursor.execute("""UPDATE "Nota" SET "Ponderacion"=%s WHERE "MateriaId"=%s AND "EstudianteId"=%s AND "LapsoId"=%s;""", (item["Ponderacion"], item["MateriaId"], item["EstudianteId"], item["LapsoId"]))
+                nota_id = row[0]
+                nota_anterior = float(row[1])
+                nota_nueva = float(item["Ponderacion"])
+
+                if nota_nueva != nota_anterior:
+                    justificacion = item.get("Justificacion")
+                    if not justificacion or str(justificacion).strip() == "":
+                        raise ValidationError("La justificación es obligatoria para editar una calificación ya existente.")
+                    
+                    cursor.execute("""UPDATE "Nota" SET "Ponderacion"=%s WHERE "NotaId"=%s;""", (item["Ponderacion"], nota_id))
+                    cursor.execute("""INSERT INTO "HistorialNota" ("NotaId", "NotaAnterior", "NotaNueva", "Justificacion", "UsuarioId", "FechaCambio") VALUES (%s, %s, %s, %s, %s, NOW());""", (nota_id, nota_anterior, nota_nueva, justificacion, payload["id"]))
             # Crear nuevo registro de Nota
             else:
                 cursor.execute("""INSERT INTO "Nota" ("Ponderacion", "MateriaId", "EstudianteId", "LapsoId") VALUES (%s, %s, %s, %s);""", (item["Ponderacion"], item["MateriaId"], item["EstudianteId"], item["LapsoId"]))
