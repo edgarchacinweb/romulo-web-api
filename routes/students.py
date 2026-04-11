@@ -313,10 +313,11 @@ def filter_students():
             query += """ AND (
                 dp."Nombre" ILIKE %s OR 
                 dp."Apellido" ILIKE %s OR 
-                CAST(dp."Cedula" AS TEXT) ILIKE %s
+                CAST(dp."Cedula" AS TEXT) ILIKE %s OR
+                (dp."Nombre" || ' ' || dp."Apellido") ILIKE %s
             )"""
             search_term = f"%{busqueda}%"
-            params.extend([search_term, search_term, search_term])
+            params.extend([search_term, search_term, search_term, search_term])
 
         query += ' ORDER BY e."EstudianteId", c."Grado" DESC'
 
