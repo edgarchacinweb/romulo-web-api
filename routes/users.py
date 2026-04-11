@@ -477,3 +477,14 @@ def count():
         return jsonify(ex[0]), ex[1]    
     finally:
         cursor.close()
+
+# --- NUEVA RUTA: VISTA DEL DASHBOARD PARA ADMINISTRADOR ---
+@user_bp.route("/admin/dashboard/view", methods=["GET"])
+def admin_dashboard_view():
+    """
+    Ruta para servir la vista principal del Dashboard del administrador.
+    """
+    try:
+        return render_template("app/admin/dashboard/index.html")
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
