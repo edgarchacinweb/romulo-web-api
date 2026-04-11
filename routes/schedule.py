@@ -45,19 +45,48 @@ def filter():
 
         rows = cursor.fetchall()
 
-        return jsonify([{
-            "HorarioId": h[0],
-            "Dia": h[1],
-            "DocenteId": h[2],
-            "MateriaId": h[3],
-            "BloqueHorarioId": h[4],
-            "CursoId": h[5],
-            "PeriodoEscolarId": h[6],
-            "Seccion": h[7]
-        } for h in rows]), 200
+        # Obtener nombre del Periodo Escolar
+        cursor.execute("""
+            SELECT "FechaInicio", "FechaFin" FROM "PeriodoEscolar" WHERE "PeriodoEscolarId"=%s
+        """, (data["PeriodoEscolarId"],))
+        periodo_row = cursor.fetchone()
+        periodo_nombre = "Desconocido"
+        if periodo_row:
+            periodo_nombre = f"{periodo_row[0].year} - {periodo_row[1].year}"
+
+        # Obtener Docente Guía (Materia: ORIENTACION Y CONVIVENCIA)
+        cursor.execute("""
+            SELECT dp."Nombre", dp."Apellido" FROM "Horario" h
+            JOIN "Docente" d ON h."DocenteId" = d."DocenteId"
+            JOIN "DatosPersona" dp ON d."DatosPersonaId" = dp."DatosPersonaId"
+            JOIN "Materia" m ON h."MateriaId" = m."MateriaId"
+            WHERE h."CursoId"=%s AND h."Seccion"=%s AND h."PeriodoEscolarId"=%s
+            AND m."Nombre" ILIKE '%%ORIENTACION%%' AND m."Nombre" ILIKE '%%CONVIVENCIA%%'
+            LIMIT 1;
+        """, (data["CursoId"], data["Seccion"], data["PeriodoEscolarId"]))
+        docente_guia_row = cursor.fetchone()
+        docente_guia = f"{docente_guia_row[0]} {docente_guia_row[1]}" if docente_guia_row else "Por asignar"
+
+        return jsonify({
+            "metadata": {
+                "PeriodoEscolarNombre": periodo_nombre,
+                "DocenteGuia": docente_guia
+            },
+            "schedule": [{
+                "HorarioId": h[0],
+                "Dia": h[1],
+                "DocenteId": h[2],
+                "MateriaId": h[3],
+                "BloqueHorarioId": h[4],
+                "CursoId": h[5],
+                "PeriodoEscolarId": h[6],
+                "Seccion": h[7]
+            } for h in rows]
+        }), 200
     except Exception as err:
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
+
     finally:
         cursor.close()
 
