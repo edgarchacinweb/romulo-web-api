@@ -35,11 +35,19 @@ def create():
         data = request.get_json()
 
         for item in data:
-            if not item["Ponderacion"]:
+            if item.get("Ponderacion") is None or str(item["Ponderacion"]).strip() == "":
                 raise MissingEntityData("La ponderación es requerida")
-            elif int(item["Ponderacion"]) < 0 or int(item["Ponderacion"]) > 20:
-                raise ValidationError("La calificación debe estar en un rango de 1-20")
-            elif not item["MateriaId"]:
+            
+            try:
+                pond_val = int(item["Ponderacion"])
+            except ValueError:
+                raise ValidationError("La calificación debe ser un valor entero numérico")
+                
+            if not (0 <= pond_val <= 20):
+                raise ValidationError("La calificación debe estar en un rango de 0-20")
+            item["Ponderacion"] = pond_val
+            
+            if not item["MateriaId"]:
                 raise MissingEntityData("El ID de la materia es requerido")
             elif not Validations.is_uuid(item["MateriaId"]):
                 raise ValidationError("El ID de la materia es inválido")
