@@ -405,7 +405,8 @@ def get_admin_report_lapso():
             JOIN "Docente" d ON c."DocenteId" = d."DocenteId"
             JOIN "DatosPersona" dp_doc ON d."DatosPersonaId" = dp_doc."DatosPersonaId"
             JOIN "Lapso" l ON a."FechaCreacion"::date BETWEEN l."FechaInicio" AND l."FechaFin"
-            WHERE c."CursoId" = %s AND c."Seccion" = %s AND l."AñoEscolar" = %s
+            JOIN "PeriodoEscolar" pe ON l."PeriodoEscolarId" = pe."PeriodoEscolarId"
+            WHERE c."CursoId" = %s AND c."Seccion" = %s AND CONCAT(EXTRACT(YEAR FROM pe."FechaInicio"), '-', EXTRACT(YEAR FROM pe."FechaFin")) = %s
         """
         params = [curso_id, seccion_int, anio_escolar]
 

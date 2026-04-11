@@ -7,7 +7,13 @@ class LapsoRules:
         conn = Connection().get_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute('SELECT "LapsoId", "Numero", "FechaInicio", "FechaFin" FROM "Lapso" ORDER BY "Numero" ASC;')
+            cursor.execute('''
+                SELECT l."LapsoId", l."Numero", l."FechaInicio", l."FechaFin" 
+                FROM "Lapso" l
+                JOIN "PeriodoEscolar" pe ON l."PeriodoEscolarId" = pe."PeriodoEscolarId"
+                WHERE pe."Activo" = TRUE
+                ORDER BY l."Numero" ASC LIMIT 3;
+            ''')
             rows = cursor.fetchall()
 
             if len(rows) < 3:

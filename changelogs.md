@@ -1,5 +1,13 @@
 # Changelog de Cambios y Modificaciones
 
+## [2026-04-11] Refactor: Migración de consultas Lapso a PeriodoEscolarId
+
+### Modificado
+- **Backend (API)**: Se actualizaron las consultas SQL en `routes/lapsos.py` (`get_current_lapsos`, `create_lapsos`, `get_lapsos`, `list`) para utilizar la nueva clave foránea `PeriodoEscolarId` en lugar de la eliminada columna de texto `AñoEscolar`.
+- **Backend (API)**: Se actualizó la consulta del reporte consolidado en `routes/assistance.py` (`get_admin_report_lapso`) para realizar un `JOIN` con la tabla `PeriodoEscolar` y extraer dinámicamente el año escolar desde sus fechas de inicio y fin. 
+- **Backend (API)**: En `utils/lapso_rules.py`, se modificó la carga de lapsos para conectarse con `PeriodoEscolar` y utilizar únicamente aquellas reglas que se apliquen al período activo, aumentando la robustez temporal del sistema.
+- **Formateo Seguro**: Las vistas de Frontend seguirán mostrando un texto como de costumbre, ya que las nuevas consultas en base de datos usan la función `CONCAT(EXTRACT(YEAR FROM pe."FechaInicio"), '-', EXTRACT(YEAR FROM pe."FechaFin")) AS "AñoEscolar"` para emular el formato antiguo y no romper el renderizado.
+
 ## [2026-04-10] Feat: Visualización dinámica de Notas para Administradores
 
 ### Añadido
