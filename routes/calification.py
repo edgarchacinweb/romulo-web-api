@@ -10,6 +10,7 @@ from utils.validations import Validations
 from utils.Security import Security
 from utils.logger import Logger
 from utils.handler import  exception_handler
+import uuid
 
 rep = NotaRep()
 logger = Logger()
@@ -67,7 +68,8 @@ def create():
                         raise ValidationError("La justificación es obligatoria para editar una calificación ya existente.")
                     
                     cursor.execute("""UPDATE "Nota" SET "Ponderacion"=%s WHERE "NotaId"=%s;""", (item["Ponderacion"], nota_id))
-                    cursor.execute("""INSERT INTO "HistorialNota" ("NotaId", "NotaAnterior", "NotaNueva", "Justificacion", "UsuarioId", "FechaCambio") VALUES (%s, %s, %s, %s, %s, NOW());""", (nota_id, nota_anterior, nota_nueva, justificacion, payload["id"]))
+                    historial_id = str(uuid.uuid4())
+                    cursor.execute("""INSERT INTO "HistorialNota" ("HistorialId", "NotaId", "NotaAnterior", "NotaNueva", "Justificacion", "UsuarioId", "FechaCambio") VALUES (%s, %s, %s, %s, %s, %s, NOW());""", (historial_id, nota_id, nota_anterior, nota_nueva, justificacion, payload["id"]))
             # Crear nuevo registro de Nota
             else:
                 cursor.execute("""INSERT INTO "Nota" ("Ponderacion", "MateriaId", "EstudianteId", "LapsoId") VALUES (%s, %s, %s, %s);""", (item["Ponderacion"], item["MateriaId"], item["EstudianteId"], item["LapsoId"]))
@@ -144,3 +146,45 @@ def get_by_student(student_id):
     finally:
         cursor.close()
 
+@blueprint.route("/calification/history", methods=["GET"])
+def history():
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+    try:
+        payload = Security.verify_token(request.headers)
+        if not payload or payload["role"] != Rol.ADMIN.name and payload["role"] != Rol.TEACHER.name:
+            raise Unauthorized()
+        
+        query = """
+            SELECT 
+                DP."Nombre" || ' ' || DP."Apellido" AS Estudiante,
+                M."Nombre" AS Materia,
+                HN."NotaAnterior",
+                HN."NotaNueva",
+                HN."Justificacion",
+                TO_CHAR(HN."FechaCambio", 'YYYY-MM-DD HH24:MI:SS') AS FechaCambio
+            FROM "HistorialNota" HN
+            JOIN "Nota" N ON HN."NotaId" = N."NotaId"
+            JOIN "Estudiante" E ON N."EstudianteId" = E."EstudianteId"
+            JOIN "DatosPersona" DP ON E."DatosPersonaId" = DP."DatosPersonaId"
+            JOIN "Materia" M ON N."MateriaId" = M."MateriaId"
+            ORDER BY HN."FechaCambio" DESC;
+        """
+        cursor.execute(query)
+        rows = cursor.fetchall()
+        
+        result = [{
+            "Estudiante": r[0],
+            "Materia": r[1],
+            "NotaAnterior": r[2],
+            "NotaNueva": r[3],
+            "Justificacion": r[4],
+            "FechaCambio": r[5]
+        } for r in rows]
+
+        return jsonify(result), 200
+    except Exception as err:
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
