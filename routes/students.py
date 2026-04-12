@@ -321,6 +321,7 @@ def filter_students():
 
         query += ' ORDER BY e."EstudianteId", c."Grado" DESC'
 
+        logger.debug("SQL", query)
         cursor.execute(query, tuple(params))
         rows = cursor.fetchall()
         

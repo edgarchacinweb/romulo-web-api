@@ -170,6 +170,8 @@ def get_user():
 @user_bp.route("/user/get", methods=["GET"])
 @user_bp.route("/user/get/<string:ci>", methods=["GET"])
 def get(ci: str):
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
     try:
         payload = Security.verify_token(request.headers)
         
@@ -179,39 +181,80 @@ def get(ci: str):
         if not Validations.is_uuid(payload["id"]):
             raise InvalidId(F"ID inválido: {payload['id']}")
         
-        user = None
+        sql = """
+        SELECT
+            u."UsuarioId",
+            u."Email",
+            u."Rol",
+            dp."DatosPersonaId",
+            dp."Nombre",
+            dp."Apellido",
+            dp."Sexo",
+            dp."Cedula",
+            dp."Telefono",
+            dp."Direccion",
+            dp."Ocupacion"
+        FROM "Usuario" AS u INNER JOIN "DatosPersona" AS dp ON dp."DatosPersonaId"=u."DatosPersona"
+        WHERE
+        """
         if not ci:
-            user = rep.get(payload["id"])
+            sql += """u."UsuarioId"=%s"""        
         else:
-            people = peopleRep.get_by_ci(ci)
-            userResult = rep.get_by_people_id(people.id)
-            user = rep.get(userResult)
-            user.password = None
-            logger.debug(user.to_dict())
-        logger.debug(user.to_dict(), "/user/get")
-        user_dict = user.to_dict()
-        del user_dict["Clave"]
+            sql += """dp."Cedula"=%s"""
+
+        cursor.execute(sql, (payload["id"] if not ci else ci,))
+        user = cursor.fetchone()
+        if not user:
+            raise EntityNotFound("No se encontró el usuario")
+        
+        user_dict = {
+            "UsuarioId": user[0],
+            "Email": user[1],
+            "Rol": user[2],
+            "DatosPersonaId": user[3],
+            "Nombre": user[4],
+            "Apellido": user[5],
+            "Sexo": user[6],
+            "Cedula": user[7],
+            "Telefono": user[8],
+            "Direccion": user[9],
+            "Ocupacion": user[10]
+        }
         return jsonify(user_dict), 200
     except Exception as err:
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
     
-@user_bp.route("/user/token/<string:id>", methods=["GET"])
-def token(id: str):
+@user_bp.route("/user/token/<string:email>", methods=["GET"])
+def token(email: str):
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
     try:
-        if not Validations.is_uuid(id):
+        if not Validations.is_email(email):
             raise InvalidId(F"ID inválido: {id}")
 
-        user = rep.get(id)
+        cursor.execute("""SELECT "UsuarioId", "Email", "Rol", "DatosPersona" FROM "Usuario" WHERE "Email" = %s;""", (email,))
+        users = cursor.fetchall()
 
-        if not user:
+        tokens = []
+        for user in users:
+            tokens.append(Security.generateToken(Usuario({
+                "id": user[0],
+                "Email": user[1],
+                "Rol": Rol(user[2])
+            })))
+
+        if not tokens or len(tokens) == 0:
             raise EntityNotFound("No se encontró el usuario")
 
-        token = Security.generateToken(user)
-        return jsonify({"token": token, "role": user.role.value}), 200
+        return jsonify([{"token": t, "id": u[3], "email": u[1], "role": u[2]} for u, t in zip(users, tokens)]), 200
     except Exception as err:
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
 
 @user_bp.route("/user/list", methods=["GET"])
 def list_users():
