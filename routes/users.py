@@ -196,22 +196,34 @@ def get(ci: str):
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
     
-@user_bp.route("/user/token/<string:id>", methods=["GET"])
-def token(id: str):
+@user_bp.route("/user/token/<string:email>", methods=["GET"])
+def token(email: str):
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
     try:
-        if not Validations.is_uuid(id):
+        if not Validations.is_email(email):
             raise InvalidId(F"ID inválido: {id}")
 
-        user = rep.get(id)
+        cursor.execute("""SELECT "UsuarioId", "Email", "Rol" FROM "Usuario" WHERE "Email" = %s;""", (email,))
+        users = cursor.fetchall()
 
-        if not user:
+        tokens = []
+        for user in users:
+            tokens.append(Security.generateToken(Usuario({
+                "id": user[0],
+                "Email": user[1],
+                "Rol": Rol(user[2])
+            })))
+
+        if not tokens or len(tokens) == 0:
             raise EntityNotFound("No se encontró el usuario")
 
-        token = Security.generateToken(user)
-        return jsonify({"token": token, "role": user.role.value}), 200
+        return jsonify([{"token": t, "email": u[1], "role": u[2]} for u, t in zip(users, tokens)]), 200
     except Exception as err:
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
 
 @user_bp.route("/user/list", methods=["GET"])
 def list_users():

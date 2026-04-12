@@ -228,11 +228,27 @@ CREATE TABLE "PeriodoCargaNota" (
 	"FechaCreacion" TIMESTAMP DEFAULT clock_timestamp()
 );
 
+CREATE TABLE "HistorialNota" (
+	"HistorialId" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+	"NotaId" UUID NOT NULL,
+	"NotaAnterior" SMALLINT NOT NULL,
+	"NotaNueva" SMALLINT NOT NULL,
+	"Justificacion" TEXT NOT NULL,
+	"UsuarioId" UUID NOT NULL,
+	"FechaCambio" TIMESTAMP DEFAULT clock_timestamp()
+);
 
 -- Restricciones (Constraints)
 ALTER TABLE "Docente" ADD CONSTRAINT Docente_Minimo_Horas_Academicas CHECK ("Docente"."HorasAcademicas" >= 20);
 ALTER TABLE "MateriaHorasAcademicas" ADD CONSTRAINT MateriaHorasAcademicas_Minimo_Horas_Academicas CHECK ("MateriaHorasAcademicas"."HorasAcademicas" >= 0);
 ALTER TABLE "MateriaHorasAcademicas" ADD CONSTRAINT MateriaHorasAcademicas_Maximo_Horas_Academicas CHECK ("MateriaHorasAcademicas"."HorasAcademicas" <= 4);
+ALTER TABLE "HistorialNota" ADD CONSTRAINT HistorialNota_NotaAnterior_Minimo CHECK ("HistorialNota"."NotaAnterior" >= 0);
+ALTER TABLE "HistorialNota" ADD CONSTRAINT HistorialNota_NotaAnterior_Maximo CHECK ("HistorialNota"."NotaAnterior" <= 20);
+ALTER TABLE "HistorialNota" ADD CONSTRAINT HistorialNota_NotaNueva_Minimo CHECK ("HistorialNota"."NotaNueva" >= 0);
+ALTER TABLE "HistorialNota" ADD CONSTRAINT HistorialNota_NotaNueva_Maximo CHECK ("HistorialNota"."NotaNueva" <= 20);
+ALTER TABLE "HistorialNota" ADD CONSTRAINT HistorialNota_NotaAnterior_Diferente_NotaNueva CHECK ("HistorialNota"."NotaAnterior" != "HistorialNota"."NotaNueva");
+ALTER TABLE "HistorialNota" ADD FOREIGN KEY ("NotaId") REFERENCES "Nota" ("NotaId");
+ALTER TABLE "HistorialNota" ADD FOREIGN KEY ("UsuarioId") REFERENCES "Usuario" ("UsuarioId");
 ALTER TABLE "Lapso" ADD FOREIGN KEY ("PeriodoEscolarId") REFERENCES "PeriodoEscolar" ("PeriodoEscolarId");
 ALTER TABLE "Incidencia" ADD FOREIGN KEY ("DatosPersonaId") REFERENCES "DatosPersona" ("DatosPersonaId");
 ALTER TABLE "Clase" ADD FOREIGN KEY ("CursoId") REFERENCES "Curso" ("CursoId");
