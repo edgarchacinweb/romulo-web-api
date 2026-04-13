@@ -6,6 +6,7 @@ from utils.Security import Security
 from utils.handler import exception_handler
 from database.Auditoria import AuditoriaRep
 from database.connection import Connection
+import psycopg2
 
 # Definimos el blueprint para las rutas de los lapsos
 lapsos_bp = Blueprint("lapsos", __name__)
@@ -80,15 +81,29 @@ def create_lapsos():
             raise BadRequest("No hay un Periodo Escolar activo para configurar los lapsos.")
         periodo_id = periodo_row[0]
 
-        # 2. Eliminamos la configuración anterior de este año escolar para evitar duplicados
-        cursor.execute('DELETE FROM "Lapso" WHERE "PeriodoEscolarId" = %s;', (periodo_id,))
-
-        # 3. Insertamos las 3 nuevas fechas
+        # 2. Iterar sobre los lapsos y aplicar UPSERT (Update if exists, Insert if not)
         for lapso in data["lapsos"]:
-            cursor.execute(
-                'INSERT INTO "Lapso" ("Numero", "FechaInicio", "FechaFin", "PeriodoEscolarId") VALUES (%s, %s, %s, %s);',
-                (lapso["lapso"], lapso["fecha_inicio"], lapso["fecha_fin"], periodo_id)
-            )
+            # Verificar si ya existe este número de lapso para el periodo activo
+            cursor.execute('''
+                SELECT "LapsoId" FROM "Lapso" 
+                WHERE "Numero" = %s AND "PeriodoEscolarId" = %s
+            ''', (lapso["lapso"], periodo_id))
+            
+            existing_lapso = cursor.fetchone()
+            
+            if existing_lapso:
+                # Actualizar fechas del lapso existente (evita borrar registros con notas asociadas)
+                cursor.execute('''
+                    UPDATE "Lapso" 
+                    SET "FechaInicio" = %s, "FechaFin" = %s 
+                    WHERE "LapsoId" = %s
+                ''', (lapso["fecha_inicio"], lapso["fecha_fin"], existing_lapso[0]))
+            else:
+                # Insertar nuevo lapso si no existe
+                cursor.execute('''
+                    INSERT INTO "Lapso" ("Numero", "FechaInicio", "FechaFin", "PeriodoEscolarId") 
+                    VALUES (%s, %s, %s, %s)
+                ''', (lapso["lapso"], lapso["fecha_inicio"], lapso["fecha_fin"], periodo_id))
         
         conn.commit()
 
@@ -103,6 +118,12 @@ def create_lapsos():
 
     except Exception as err:
         conn.rollback()
+        # Captura específica de errores de base de datos (psycopg2)
+        if isinstance(err, psycopg2.Error):
+            return jsonify({
+                "message": "Error de base de datos al configurar los lapsos. Verifique la integridad de las fechas o registros relacionados."
+            }), 400
+            
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
     finally:
