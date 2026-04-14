@@ -236,6 +236,95 @@ def grade_status():
     finally:
         cursor.close()
 
+@blueprint.route("/calification/academic_status", methods=["POST"])
+def academic_status():
+    """
+    Calcula el estatus académico de cada estudiante:
+    - Promedio final por materia = promedio de las notas de los 3 lapsos del período activo.
+    - Materia reprobada si promedio final <= 9.
+    - Retorna { EstudianteId: cantidad_materias_reprobadas } para cada estudiante solicitado.
+    """
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+    try:
+        payload = Security.verify_token(request.headers)
+        if not payload or payload["role"] != Rol.ADMIN.name and payload["role"] != Rol.TEACHER.name:
+            raise Unauthorized()
+
+        data = request.get_json()
+        student_ids = data.get("StudentIds", [])
+        curso_id = data.get("CursoId", "")
+
+        if not student_ids or not curso_id:
+            return jsonify({}), 200
+
+        # 1. Obtener los IDs de los 3 lapsos del período escolar activo
+        cursor.execute("""
+            SELECT l."LapsoId"
+            FROM "Lapso" l
+            JOIN "PeriodoEscolar" pe ON l."PeriodoEscolarId" = pe."PeriodoEscolarId"
+            WHERE pe."Activo" = TRUE
+            ORDER BY l."Numero" ASC
+            LIMIT 3;
+        """)
+        lapso_rows = cursor.fetchall()
+        lapso_ids = [r[0] for r in lapso_rows]
+
+        if len(lapso_ids) == 0:
+            result = {sid: 0 for sid in student_ids}
+            return jsonify(result), 200
+
+        # 2. Obtener las materias activas del curso
+        cursor.execute("""
+            SELECT DISTINCT mha."MateriaId"
+            FROM "MateriaHorasAcademicas" mha
+            JOIN "Materia" m ON m."MateriaId" = mha."MateriaId"
+            WHERE mha."CursoId" = %s AND m."Activo" = TRUE;
+        """, (curso_id,))
+        subject_ids = [r[0] for r in cursor.fetchall()]
+
+        if len(subject_ids) == 0:
+            result = {sid: 0 for sid in student_ids}
+            return jsonify(result), 200
+
+        # 3. Consulta: para cada estudiante y materia, calcular el promedio
+        #    solo si tiene los 3 lapsos cargados; luego contar las reprobadas (promedio <= 9)
+        placeholders_students = ','.join(['%s'] * len(student_ids))
+        placeholders_lapsos = ','.join(['%s'] * len(lapso_ids))
+        placeholders_subjects = ','.join(['%s'] * len(subject_ids))
+
+        query = f"""
+            SELECT sub."EstudianteId", COUNT(*) AS materias_reprobadas
+            FROM (
+                SELECT n."EstudianteId", n."MateriaId",
+                       AVG(n."Ponderacion") AS promedio_final,
+                       COUNT(n."NotaId") AS total_notas
+                FROM "Nota" n
+                WHERE n."EstudianteId" IN ({placeholders_students})
+                  AND n."LapsoId" IN ({placeholders_lapsos})
+                  AND n."MateriaId" IN ({placeholders_subjects})
+                GROUP BY n."EstudianteId", n."MateriaId"
+                HAVING COUNT(n."NotaId") = {len(lapso_ids)}
+                   AND AVG(n."Ponderacion") <= 9
+            ) sub
+            GROUP BY sub."EstudianteId";
+        """
+
+        cursor.execute(query, (*student_ids, *lapso_ids, *subject_ids))
+        rows = cursor.fetchall()
+
+        # Construir resultado: por defecto 0 reprobadas para quienes no aparecen en la consulta
+        result = {sid: 0 for sid in student_ids}
+        for r in rows:
+            result[str(r[0])] = int(r[1])
+
+        return jsonify(result), 200
+    except Exception as err:
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
+
 @blueprint.route("/calification/history", methods=["GET"])
 def history():
     conn = Connection().get_connection()
