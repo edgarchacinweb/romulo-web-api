@@ -160,6 +160,82 @@ def get_by_student(student_id):
     finally:
         cursor.close()
 
+@blueprint.route("/calification/grade_status", methods=["POST"])
+def grade_status():
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
+    try:
+        payload = Security.verify_token(request.headers)
+        if not payload or payload["role"] != Rol.ADMIN.name and payload["role"] != Rol.TEACHER.name:
+            raise Unauthorized()
+
+        data = request.get_json()
+        student_ids = data.get("StudentIds", [])
+        curso_id = data.get("CursoId", "")
+
+        if not student_ids or not curso_id:
+            return jsonify({}), 200
+
+        # 1. Count how many active subjects exist for this course
+        cursor.execute("""
+            SELECT COUNT(DISTINCT mha."MateriaId")
+            FROM "MateriaHorasAcademicas" mha
+            JOIN "Materia" m ON m."MateriaId" = mha."MateriaId"
+            WHERE mha."CursoId" = %s AND m."Activo" = TRUE;
+        """, (curso_id,))
+        subject_count = cursor.fetchone()[0]
+
+        # 2. Get the 3 lapso IDs for the active school term
+        cursor.execute("""
+            SELECT l."LapsoId"
+            FROM "Lapso" l
+            JOIN "PeriodoEscolar" pe ON l."PeriodoEscolarId" = pe."PeriodoEscolarId"
+            WHERE pe."Activo" = TRUE
+            ORDER BY l."Numero" ASC
+            LIMIT 3;
+        """)
+        lapso_rows = cursor.fetchall()
+        lapso_count = len(lapso_rows)
+
+        # Expected total grades per student = subjects × lapsos (3)
+        expected_total = subject_count * lapso_count
+
+        if expected_total == 0:
+            # No subjects or no lapsos configured => no one can be "complete"
+            result = {sid: False for sid in student_ids}
+            return jsonify(result), 200
+
+        lapso_ids = [r[0] for r in lapso_rows]
+
+        # 3. Count actual grades per student (only for these lapsos)
+        # Build IN clause for student IDs
+        placeholders_students = ','.join(['%s'] * len(student_ids))
+        placeholders_lapsos = ','.join(['%s'] * len(lapso_ids))
+
+        cursor.execute(f"""
+            SELECT n."EstudianteId", COUNT(n."NotaId")
+            FROM "Nota" n
+            JOIN "MateriaHorasAcademicas" mha ON n."MateriaId" = mha."MateriaId" AND mha."CursoId" = %s
+            WHERE n."EstudianteId" IN ({placeholders_students})
+              AND n."LapsoId" IN ({placeholders_lapsos})
+            GROUP BY n."EstudianteId";
+        """, (curso_id, *student_ids, *lapso_ids))
+        count_rows = cursor.fetchall()
+
+        # Build result dictionary
+        grade_counts = {str(r[0]): int(r[1]) for r in count_rows}
+        result = {}
+        for sid in student_ids:
+            actual = grade_counts.get(str(sid), 0)
+            result[str(sid)] = actual >= expected_total
+
+        return jsonify(result), 200
+    except Exception as err:
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
+
 @blueprint.route("/calification/history", methods=["GET"])
 def history():
     conn = Connection().get_connection()
