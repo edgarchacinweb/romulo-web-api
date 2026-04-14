@@ -74,15 +74,18 @@ def create_teacher():
                     raise ValidationError("El ID de la materia es inválido")
 
         # Creando registro de datos del docente
-        cursor.execute(
-            """
-            INSERT INTO "DatosPersona" ("Nombre", "Apellido", "Sexo", "Cedula", "Telefono", "Ocupacion", "Direccion")
-            VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING "DatosPersonaId"
-            """,
-            (data["Nombre"], data["Apellido"], data["Sexo"], data["Cedula"], data["Telefono"], data["Ocupacion"], data["Direccion"])
-        )
+        if "DatosPersonaId" not in data:
+            cursor.execute(
+                """
+                INSERT INTO "DatosPersona" ("Nombre", "Apellido", "Sexo", "Cedula", "Telefono", "Ocupacion", "Direccion")
+                VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING "DatosPersonaId"
+                """,
+                (data["Nombre"], data["Apellido"], data["Sexo"], data["Cedula"], data["Telefono"], data["Ocupacion"], data["Direccion"])
+            )
 
-        id_datos_persona = cursor.fetchone()[0]
+            id_datos_persona = cursor.fetchone()[0]
+        else:
+            id_datos_persona = data["DatosPersonaId"]
         
         if not id_datos_persona:
             raise EntityNotFound("Error al registrar los datos del docente")
