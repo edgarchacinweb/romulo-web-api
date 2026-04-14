@@ -193,11 +193,13 @@ def list():
 
         cursor.execute(
             """
-            SELECT * FROM "Docente" AS d
+            SELECT DISTINCT * FROM "Docente" AS d
             INNER JOIN "DatosPersona" AS dp ON d."DatosPersonaId"=dp."DatosPersonaId"
             INNER JOIN "Usuario" AS u ON u."DatosPersona"=d."DatosPersonaId"
+            WHERE u."Rol" = %s
             ORDER BY d."Activo" DESC, d."FechaCreacion" DESC;
-            """
+            """,
+            (Rol.TEACHER.value,)
         )
 
         teachers = cursor.fetchall()

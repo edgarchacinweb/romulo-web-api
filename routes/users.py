@@ -43,6 +43,8 @@ def encryptpwd(pwd: str):
 
 @user_bp.route("/user/register", methods=["POST"])
 def register():
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
     try:
         data = request.get_json()
 
@@ -54,8 +56,8 @@ def register():
         user_response = rep.get_by_people_id(data["DatosPersonaId"])
         logger.debug("Datos del usuario buscados")
 
-        if user_response and len(user_response) > 0:
-            return jsonify({"id": user_response[0]}), 200
+        # if user_response and len(user_response) > 1:
+        #     return jsonify({"id": [user_response[0], data["DatosPersonaId"]]}), 200
 
         if not Validations.is_email(data["Email"]):
             raise ValidationError("El correo electrónico introducido no es valido")
@@ -92,9 +94,8 @@ def register():
         })
         # ------------------------------------------------
 
-        id = rep.create(user)
-
-        logger.debug("Usuario creado")
+        cursor.execute("""INSERT INTO "Usuario" ("Email", "Clave", "Rol", "DatosPersona") VALUES (%s, %s, %s, %s) RETURNING "UsuarioId";""", (data["Email"], hashed_password, data["Rol"], data["DatosPersonaId"]))
+        id = cursor.fetchone()[0]
 
         if not id:
             raise InsertEntityError("No se pudo crear el usuario")
@@ -109,11 +110,15 @@ def register():
         }))
 
         logger.debug("Auditoria creada")
+        conn.commit()
 
         return jsonify({"id": id}), 201
     except Exception as err:
+        conn.rollback()
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
+    finally:
+        cursor.close()
 
 @user_bp.route("/user/login", methods=["POST"])
 def login():
