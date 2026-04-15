@@ -337,6 +337,7 @@ def history():
         query = """
             SELECT 
                 DP."Nombre" || ' ' || DP."Apellido" AS Estudiante,
+                COALESCE(C."Grado"::TEXT || '° Año', 'N/A') AS Ano,
                 M."Nombre" AS Materia,
                 HN."NotaAnterior",
                 HN."NotaNueva",
@@ -347,6 +348,15 @@ def history():
             JOIN "Estudiante" E ON N."EstudianteId" = E."EstudianteId"
             JOIN "DatosPersona" DP ON E."DatosPersonaId" = DP."DatosPersonaId"
             JOIN "Materia" M ON N."MateriaId" = M."MateriaId"
+            LEFT JOIN LATERAL (
+                SELECT CE."CursoId"
+                FROM "CursoEstudiante" CE
+                JOIN "PeriodoEscolar" PE ON CE."PeriodoEscolarId" = PE."PeriodoEscolarId"
+                WHERE CE."EstudianteId" = E."EstudianteId"
+                ORDER BY PE."FechaInicio" DESC
+                LIMIT 1
+            ) CE_LATEST ON TRUE
+            LEFT JOIN "Curso" C ON C."CursoId" = CE_LATEST."CursoId"
             ORDER BY HN."FechaCambio" DESC;
         """
         cursor.execute(query)
@@ -354,12 +364,14 @@ def history():
         
         result = [{
             "Estudiante": r[0],
-            "Materia": r[1],
-            "NotaAnterior": r[2],
-            "NotaNueva": r[3],
-            "Justificacion": r[4],
-            "FechaCambio": r[5]
+            "Ano": r[1],
+            "Materia": r[2],
+            "NotaAnterior": r[3],
+            "NotaNueva": r[4],
+            "Justificacion": r[5],
+            "FechaCambio": r[6]
         } for r in rows]
+
 
         return jsonify(result), 200
     except Exception as err:
