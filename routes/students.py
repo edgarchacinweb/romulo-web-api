@@ -279,6 +279,40 @@ def filter_students():
         seccion = data.get("Seccion", "")
         periodo_escolar_id = data.get("PeriodoEscolarId", "")
 
+        # --- VALIDACIÓN TEMPRANA: verificar existencia de horario para el grado/sección ---
+        # Solo se aplica cuando el filtro proviene del módulo de Calificaciones
+        # (es decir, cuando se especifican CursoId y Sección de forma explícita)
+        if (
+            estado == "inscrito"
+            and curso_id and curso_id not in ("", "undefined")
+            and seccion and seccion not in ("", "undefined")
+        ):
+            # Obtener el período escolar activo
+            cursor.execute(
+                'SELECT "PeriodoEscolarId" FROM "PeriodoEscolar" WHERE "Activo" = TRUE '
+                'ORDER BY "FechaInicio" DESC LIMIT 1;'
+            )
+            periodo_row = cursor.fetchone()
+
+            if periodo_row:
+                periodo_activo_id = periodo_row[0]
+                cursor.execute(
+                    'SELECT COUNT(*) FROM "Horario" '
+                    'WHERE "CursoId" = %s AND "Seccion" = %s AND "PeriodoEscolarId" = %s '
+                    'AND "MateriaId" IS NOT NULL;',
+                    (curso_id, int(seccion), periodo_activo_id)
+                )
+                count_row = cursor.fetchone()
+                horario_count = count_row[0] if count_row else 0
+
+                if horario_count == 0:
+                    # No hay horario registrado para esta sección → notificar al frontend
+                    return jsonify({
+                        "sin_horario": True,
+                        "estudiantes": []
+                    }), 200
+        # -----------------------------------------------------------------------
+
         query = """
             SELECT DISTINCT ON (e."EstudianteId") 
                    e."EstudianteId", ee."Estado", dp."Nombre", dp."Apellido", dp."Cedula", 
@@ -324,8 +358,8 @@ def filter_students():
         logger.debug("SQL", query)
         cursor.execute(query, tuple(params))
         rows = cursor.fetchall()
-        
-        return jsonify([{
+
+        estudiantes = [{
             "EstudianteId": r[0], "Estado": r[1], "FechaNacimiento": str(r[7]), "Parentesco": r[14],
             "DatosPersona": { "Nombre": r[2], "Apellido": r[3], "Cedula": r[4], "Sexo": r[12], "Direccion": r[13] },
             "Curso": { "Grado": r[5], "Seccion": "Por asignar" if r[6] == 0 else number_to_letter(r[6]) },
@@ -334,7 +368,12 @@ def filter_students():
                 "Email": r[11] if r[11] else "Sin Email", "Cedula": r[15], "Telefono": r[16],
                 "Ocupacion": r[17], "Direccion": r[18]
             }
-        } for r in rows]), 200
+        } for r in rows]
+
+        return jsonify({
+            "sin_horario": False,
+            "estudiantes": estudiantes
+        }), 200
     except Exception as err:
         conn.rollback()
         return jsonify({"message": str(err)}), 500
@@ -722,35 +761,83 @@ def download_enrollment_form(id):
     finally:
         cursor.close()
 
-# --- 12. OBTENER MATERIAS DE UN ESTUDIANTE ---
+# --- 12. OBTENER MATERIAS DE UN ESTUDIANTE (DESDE HORARIO DE SECCIÓN) ---
 @student_bp.route("/students/<string:id>/subjects", methods=["GET"])
 def get_student_subjects(id):
+    """
+    Obtiene las materias asignadas al estudiante basándose en el HORARIO
+    registrado para su grado y sección en el período escolar activo.
+
+    Lógica de negocio:
+    - Si existe un horario para la sección del estudiante → retorna las
+      materias únicas extraídas de dicho horario.
+    - Si NO existe horario → retorna sin_horario=True y lista vacía, para
+      que el frontend pueda mostrar la advertencia correspondiente.
+    """
     conn, cursor = get_db()
     try:
-        query = """
-            SELECT m."MateriaId", m."Nombre"
-            FROM "Materia" m
-            JOIN "MateriaHorasAcademicas" mha ON m."MateriaId" = mha."MateriaId"
-            JOIN "CursoEstudiante" ce ON mha."CursoId" = ce."CursoId"
-            WHERE ce."EstudianteId" = %s AND m."Activo" = TRUE
-            -- Filtrar por el último periodo escolar inscrito si es necesario, 
-            -- por ahora obtenemos el más reciente o el activo
-            ORDER BY ce."PeriodoEscolarId" DESC, m."Nombre" ASC
-        """
-        cursor.execute(query, (id,))
+        # 1. Obtener CursoId, Seccion y PeriodoEscolarId activo del estudiante
+        cursor.execute("""
+            SELECT ce."CursoId", ce."Seccion", pe."PeriodoEscolarId"
+            FROM "CursoEstudiante" ce
+            JOIN "PeriodoEscolar" pe ON ce."PeriodoEscolarId" = pe."PeriodoEscolarId"
+            JOIN "EstadoEstudiante" ee ON ce."EstudianteId" = ee."EstudianteId"
+            WHERE ce."EstudianteId" = %s
+              AND pe."Activo" = TRUE
+              AND ee."Estado" = 'inscrito'
+            ORDER BY pe."FechaInicio" DESC
+            LIMIT 1;
+        """, (id,))
+        enrollment_row = cursor.fetchone()
+
+        if not enrollment_row:
+            # Estudiante sin inscripción activa
+            return jsonify({
+                "sin_horario": True,
+                "materias": []
+            }), 200
+
+        curso_id, seccion, periodo_id = enrollment_row
+
+        # 2. Verificar si existe al menos un registro de Horario para
+        #    este Grado + Sección + Período escolar activo
+        cursor.execute("""
+            SELECT COUNT(*) FROM "Horario"
+            WHERE "CursoId" = %s
+              AND "Seccion" = %s
+              AND "PeriodoEscolarId" = %s
+              AND "MateriaId" IS NOT NULL;
+        """, (curso_id, seccion, periodo_id))
+        count_row = cursor.fetchone()
+        horario_count = count_row[0] if count_row else 0
+
+        if horario_count == 0:
+            # No existe horario para esta sección → advertencia al frontend
+            return jsonify({
+                "sin_horario": True,
+                "materias": []
+            }), 200
+
+        # 3. Extraer materias ÚNICAS del horario de la sección (activas)
+        cursor.execute("""
+            SELECT DISTINCT m."MateriaId", m."Nombre"
+            FROM "Horario" h
+            JOIN "Materia" m ON h."MateriaId" = m."MateriaId"
+            WHERE h."CursoId" = %s
+              AND h."Seccion" = %s
+              AND h."PeriodoEscolarId" = %s
+              AND m."Activo" = TRUE
+            ORDER BY m."Nombre" ASC;
+        """, (curso_id, seccion, periodo_id))
         rows = cursor.fetchall()
-        
-        # Como puede traer de múltiples periodos si hay histórico, tomaremos el primer set
-        # usando un DISTINCT manual o ajustando la query. Para simplificar, agrupamos por id
-        subjects_dict = {}
-        for r in rows:
-            if r[0] not in subjects_dict:
-                subjects_dict[r[0]] = {
-                    "id": r[0],
-                    "name": r[1]
-                }
-        
-        return jsonify(list(subjects_dict.values())), 200
+
+        materias = [{"id": r[0], "name": r[1]} for r in rows]
+
+        return jsonify({
+            "sin_horario": False,
+            "materias": materias
+        }), 200
+
     except Exception as err:
         conn.rollback()
         return jsonify({"message": str(err)}), 500
