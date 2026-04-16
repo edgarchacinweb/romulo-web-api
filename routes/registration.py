@@ -341,7 +341,11 @@ def registrationCount():
         cursor.execute('SELECT COUNT(*) FROM "EstadoEstudiante" WHERE "Estado" = \'revision\';')
         total = cursor.fetchone()[0]
         
-        return jsonify({"count": total}), 200
+        cursor.execute('SELECT COUNT(*) FROM "PeriodoInscripcion" WHERE "Fin" >= CURRENT_DATE AND "Activo" = TRUE;')
+        active_periods_count = cursor.fetchone()[0]
+        periodo_activo = active_periods_count > 0
+        
+        return jsonify({"count": total, "periodo_activo": periodo_activo}), 200
     except Exception as err:
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]

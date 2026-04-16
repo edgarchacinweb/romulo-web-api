@@ -544,7 +544,18 @@ def admin_dashboard_view():
     """
     Ruta para servir la vista principal del Dashboard del administrador.
     """
+    from database.connection import Connection
+    from flask import render_template
+    conn = Connection().get_connection()
+    cursor = conn.cursor()
     try:
-        return render_template("app/admin/dashboard/index.html")
+        # Verificar si hay un período de inscripción activo (dentro de fechas correspondientes y flag Activo)
+        cursor.execute('SELECT COUNT(*) FROM "PeriodoInscripcion" WHERE "Activo" = TRUE AND CURRENT_DATE BETWEEN "Inicio" AND "Fin";')
+        inscripciones_activas = cursor.fetchone()[0] > 0
+        
+        # Pasamos la variable booleana a la plantilla
+        return render_template("app/admin/dashboard/index.html", inscripciones_activas=inscripciones_activas)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
