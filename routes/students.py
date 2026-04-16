@@ -486,10 +486,24 @@ def approve_student(id):
                                         """, (id, materia_id, lapso_id_nuevo))
                                         if not cursor.fetchone():
                                             cursor.execute("""
-                                                INSERT INTO "Nota" ("Ponderacion", "MateriaId", "EstudianteId", "LapsoId", "Convalidada")
-                                                VALUES (%s, %s, %s, %s, TRUE)
+                                                INSERT INTO "Nota" ("Ponderacion", "MateriaId", "EstudianteId", "LapsoId")
+                                                VALUES (%s, %s, %s, %s)
                                             """, (int(ponderacion), materia_id, id, lapso_id_nuevo))
-                                # Si promedio <= 9: NO se inserta nada → materia queda en blanco
+                                else:
+                                    # Materia REPROBADA → crear registros vacíos (NULL) para cursarse de nuevo
+                                    for i in range(3):
+                                        lapso_id_nuevo = lapso_ids_actuales[i]
+                                        cursor.execute("""
+                                            SELECT 1 FROM "Nota"
+                                            WHERE "EstudianteId" = %s
+                                              AND "MateriaId" = %s
+                                              AND "LapsoId" = %s
+                                        """, (id, materia_id, lapso_id_nuevo))
+                                        if not cursor.fetchone():
+                                            cursor.execute("""
+                                                INSERT INTO "Nota" ("Ponderacion", "MateriaId", "EstudianteId", "LapsoId")
+                                                VALUES (NULL, %s, %s, %s)
+                                            """, (materia_id, id, lapso_id_nuevo))
         # -------------------------------------------------
 
         conn.commit()
