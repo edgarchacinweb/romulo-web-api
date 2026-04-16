@@ -67,14 +67,19 @@ def create():
                 raise Unauthorized("Está intentando cargar o modificar notas en un lapso que actualmente no se encuentra abierto.")
 
             # Buscar si existe una nota con la misma MateriaId, EstudianteId y LapsoId bloqueándola para la transacción
-            cursor.execute("""SELECT "NotaId", "Ponderacion" FROM "Nota" WHERE "MateriaId"=%s AND "EstudianteId"=%s AND "LapsoId"=%s FOR UPDATE;""", (item["MateriaId"], item["EstudianteId"], item["LapsoId"]))
+            cursor.execute("""SELECT "NotaId", "Ponderacion", "Convalidada" FROM "Nota" WHERE "MateriaId"=%s AND "EstudianteId"=%s AND "LapsoId"=%s FOR UPDATE;""", (item["MateriaId"], item["EstudianteId"], item["LapsoId"]))
             row = cursor.fetchone()
             
             # Actualizar Nota con nueva Ponderacion si ha sido modificada
             if row:
                 nota_id = row[0]
                 nota_anterior = float(row[1])
+                convalidada   = row[2]  # FLAG DE SEGURIDAD
                 nota_nueva = float(item["Ponderacion"])
+
+                # GUARDIA DE SEGURIDAD: rechazar modificación de notas convalidadas
+                if convalidada:
+                    raise Unauthorized("La calificación de la materia convalidada no puede ser modificada. Fue migrada automáticamente por convalidación.")
 
                 if nota_nueva != nota_anterior:
                     justificacion = item.get("Justificacion")
@@ -106,7 +111,7 @@ def list():
         if not payload or payload["role"] != Rol.ADMIN.name and payload["role"] != Rol.TEACHER.name:
             raise Unauthorized()
         
-        cursor.execute("""SELECT "NotaId", "Ponderacion", "MateriaId", "EstudianteId", "LapsoId" FROM "Nota";""")
+        cursor.execute("""SELECT "NotaId", "Ponderacion", "MateriaId", "EstudianteId", "LapsoId", "Convalidada" FROM "Nota";""")
         rows = cursor.fetchall()
 
         if len(rows) == 0:
@@ -117,7 +122,8 @@ def list():
             "Ponderacion": n[1],
             "MateriaId": n[2],
             "EstudianteId": n[3],
-            "LapsoId": n[4]
+            "LapsoId": n[4],
+            "Convalidada": n[5]
         } for n in rows]), 200
     except Exception as err:
         ex = exception_handler(err)
@@ -136,7 +142,7 @@ def get_by_student(student_id):
             raise Unauthorized()
         
         cursor.execute("""
-            SELECT n."NotaId", n."Ponderacion", n."MateriaId", n."EstudianteId", n."LapsoId", l."Numero"
+            SELECT n."NotaId", n."Ponderacion", n."MateriaId", n."EstudianteId", n."LapsoId", l."Numero", n."Convalidada"
             FROM "Nota" n
             JOIN "Lapso" l ON n."LapsoId" = l."LapsoId"
             WHERE n."EstudianteId"=%s;
@@ -152,7 +158,8 @@ def get_by_student(student_id):
             "MateriaId": n[2],
             "EstudianteId": n[3],
             "LapsoId": n[4],
-            "LapsoNumero": n[5]
+            "LapsoNumero": n[5],
+            "Convalidada": n[6]
         } for n in rows]), 200
     except Exception as err:
         ex = exception_handler(err)

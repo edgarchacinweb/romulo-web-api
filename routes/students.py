@@ -392,7 +392,106 @@ def approve_student(id):
         curso_info = cursor.fetchone()
         if curso_info:
             balancear_secciones_curso(cursor, curso_info[0], curso_info[1])
-            
+
+        # --- CONVALIDACIÓN AUTOMÁTICA PARA REPITIENTES ---
+        # Se detecta si el estudiante ya tiene notas en lapsos de un período ANTERIOR
+        # al período actual del mismo curso. Si es así, es repitiente.
+        if curso_info:
+            curso_id_actual    = curso_info[0]
+            periodo_id_actual  = curso_info[1]
+
+            # Obtener los 3 lapsos del período actual
+            cursor.execute("""
+                SELECT "LapsoId", "Numero"
+                FROM "Lapso"
+                WHERE "PeriodoEscolarId" = %s
+                ORDER BY "Numero" ASC
+                LIMIT 3
+            """, (periodo_id_actual,))
+            lapsos_actuales = cursor.fetchall()  # [(LapsoId, Numero), ...]
+
+            if len(lapsos_actuales) == 3:
+                lapso_ids_actuales = [r[0] for r in lapsos_actuales]
+
+                # Buscar si el estudiante tiene notas en lapsos de OTRO período escolar
+                # para el mismo curso — esto lo identifica como repitiente
+                cursor.execute("""
+                    SELECT DISTINCT l."PeriodoEscolarId"
+                    FROM "Nota" n
+                    JOIN "Lapso" l ON n."LapsoId" = l."LapsoId"
+                    WHERE n."EstudianteId" = %s
+                      AND l."PeriodoEscolarId" != %s
+                    LIMIT 1
+                """, (id, periodo_id_actual))
+                periodo_anterior_row = cursor.fetchone()
+
+                if periodo_anterior_row:
+                    # ES REPITIENTE: tiene notas de un período anterior
+                    periodo_id_anterior = periodo_anterior_row[0]
+
+                    # Obtener los 3 lapsos del período anterior (en orden)
+                    cursor.execute("""
+                        SELECT "LapsoId", "Numero"
+                        FROM "Lapso"
+                        WHERE "PeriodoEscolarId" = %s
+                        ORDER BY "Numero" ASC
+                        LIMIT 3
+                    """, (periodo_id_anterior,))
+                    lapsos_anteriores = cursor.fetchall()
+
+                    if len(lapsos_anteriores) == 3:
+                        lapso_ids_anteriores = [r[0] for r in lapsos_anteriores]
+
+                        # Obtener materias activas del curso
+                        cursor.execute("""
+                            SELECT DISTINCT mha."MateriaId"
+                            FROM "MateriaHorasAcademicas" mha
+                            JOIN "Materia" m ON mha."MateriaId" = m."MateriaId"
+                            WHERE mha."CursoId" = %s AND m."Activo" = TRUE
+                        """, (curso_id_actual,))
+                        materias = [r[0] for r in cursor.fetchall()]
+
+                        for materia_id in materias:
+                            # Obtener las notas del lapso anterior para esta materia
+                            cursor.execute("""
+                                SELECT n."LapsoId", n."Ponderacion"
+                                FROM "Nota" n
+                                WHERE n."EstudianteId" = %s
+                                  AND n."MateriaId" = %s
+                                  AND n."LapsoId" = ANY(%s)
+                                ORDER BY (
+                                    SELECT "Numero" FROM "Lapso"
+                                    WHERE "LapsoId" = n."LapsoId"
+                                ) ASC
+                            """, (id, materia_id, lapso_ids_anteriores))
+                            notas_anteriores = cursor.fetchall()
+
+                            # Solo convalidar si tiene las 3 notas del período anterior
+                            if len(notas_anteriores) == 3:
+                                ponderaciones    = [float(r[1]) for r in notas_anteriores]
+                                promedio_anterior = sum(ponderaciones) / len(ponderaciones)
+
+                                if promedio_anterior > 9:
+                                    # Materia APROBADA → migrar notas con Convalidada=TRUE
+                                    # Mapear lapso anterior (por posición) → lapso actual
+                                    for i, (lapso_id_ant, ponderacion) in enumerate(notas_anteriores):
+                                        lapso_id_nuevo = lapso_ids_actuales[i]
+
+                                        # Evitar duplicados: solo insertar si no existe ya
+                                        cursor.execute("""
+                                            SELECT 1 FROM "Nota"
+                                            WHERE "EstudianteId" = %s
+                                              AND "MateriaId" = %s
+                                              AND "LapsoId" = %s
+                                        """, (id, materia_id, lapso_id_nuevo))
+                                        if not cursor.fetchone():
+                                            cursor.execute("""
+                                                INSERT INTO "Nota" ("Ponderacion", "MateriaId", "EstudianteId", "LapsoId", "Convalidada")
+                                                VALUES (%s, %s, %s, %s, TRUE)
+                                            """, (int(ponderacion), materia_id, id, lapso_id_nuevo))
+                                # Si promedio <= 9: NO se inserta nada → materia queda en blanco
+        # -------------------------------------------------
+
         conn.commit()
         return jsonify({"message": "Estudiante aprobado exitosamente y secciones balanceadas"}), 200
     except Exception as err:
