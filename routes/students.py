@@ -549,6 +549,10 @@ def reject_student(id):
 def correct_application(id):
     conn, cursor = get_db()
     try:
+        cursor.execute('SELECT 1 FROM "PeriodoInscripcion" WHERE "Activo" = TRUE AND CURRENT_DATE BETWEEN "Inicio" AND "Fin" LIMIT 1;')
+        if not cursor.fetchone():
+            return jsonify({"message": "No se pueden enviar correcciones fuera del período de inscripción"}), 403
+
         data = request.form
         
         if "Nombre" in data: validar_solo_letras(data["Nombre"], "Nombre")
@@ -650,6 +654,9 @@ def submit_reinscription(id):
 def get_all_by_parent(parent_id):
     conn, cursor = get_db()
     try:
+        cursor.execute('SELECT 1 FROM "PeriodoInscripcion" WHERE "Activo" = TRUE AND CURRENT_DATE BETWEEN "Inicio" AND "Fin" LIMIT 1;')
+        periodo_abierto = True if cursor.fetchone() else False
+
         query = """
             SELECT DISTINCT ON (e."EstudianteId") 
                    e."EstudianteId", e."FechaNacimiento", c."Grado", ce."Seccion", 
@@ -665,7 +672,7 @@ def get_all_by_parent(parent_id):
         cursor.execute(query, (parent_id,))
         rows = cursor.fetchall()
         
-        return jsonify([
+        estudiantes = [
             {
                 "EstudianteId": r[0], 
                 "FechaNacimiento": str(r[1]),
@@ -675,7 +682,12 @@ def get_all_by_parent(parent_id):
                 }, 
                 "EstadoEstudiante": {"Estado": r[8]}
             } for r in rows
-        ]), 200
+        ]
+
+        return jsonify({
+            "estudiantes": estudiantes,
+            "periodo_abierto": periodo_abierto
+        }), 200
     except Exception as err:
         conn.rollback()
         return jsonify({"message": str(err)}), 500
