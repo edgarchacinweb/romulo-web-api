@@ -13,6 +13,7 @@ from utils.Security import Security
 from models.Usuario import Rol
 from models.DatosPersona import DatosPersona
 from database.DatosPersona import DatosPersonaRep
+import os
 
 logger = Logger()
 docs_bp = Blueprint("docs", __name__)
@@ -137,7 +138,8 @@ def create_doc(ci: str):
 def get_docs(resource: str = ""):
     try:
         upload_folder: str = app.config["UPLOAD_FOLDER"]
-        url = f"{upload_folder}/{resource}"
+        base_dir: str = Path(__file__).resolve().parent
+        url = f"{base_dir}/{upload_folder}/{resource}"
 
         resource_url: Path = Path(url)
         img_format = get_format(resource)
