@@ -135,29 +135,38 @@ def create_doc(ci: str):
         return jsonify(ex[0]), ex[1]
 
 @docs_bp.route("/docs/get/<string:resource>", methods=["GET"])
-def get_docs(resource: str = ""):
+def get_docs(resource: str):
     try:
-        upload_folder: str = app.config["UPLOAD_FOLDER"]
-        base_dir: str = Path(__file__).resolve().parent.parent
-        logger.debug(base_dir, "DIR")
-        url = f"{base_dir}/uploads/{resource}"
-        logger.debug(url, "FILE")
+        # 1. Construir ruta absoluta correctamente
+        base_dir = Path(__file__).resolve().parent.parent
+        resource_url = base_dir / "uploads" / resource
+        
+        logger.debug(f"Buscando archivo en: {resource_url}")
 
-        resource_url: Path = Path(url)
-        img_format = get_format(resource)
+        # 2. Validar existencia física
+        if not resource_url.is_file():
+            raise EntityNotFound("No se encontró el archivo solicitado")
 
-        if not resource_url.exists():
-            raise EntityNotFound("No se encontró ninguna imagen o documento asociada al ID")
-
+        img_format = get_format(resource).lower()
         is_preview = request.args.get("preview") == "1"
-        as_attachment = (img_format == "pdf") and not is_preview
+        
+        # 3. Determinar Mimetype
+        mimetypes = {
+            "webp": "image/webp",
+            "pdf": "application/pdf",
+            "jpg": "image/jpeg",
+            "png": "image/png"
+        }
+        mime = mimetypes.get(img_format, "application/octet-stream")
 
+        # 4. Enviar archivo
         return send_file(
-            resource_url,
-            mimetype="image/webp" if img_format == "webp" else "application/pdf",
-            as_attachment=as_attachment
+            path_or_file=resource_url,
+            mimetype=mime,
+            as_attachment=not is_preview, # Descarga si no es preview
+            download_name=resource        # Sugiere el nombre original del archivo
         )
     except Exception as err:
         ex = exception_handler(err)
-        logger.error(ex)
+        logger.error(f"Error obteniendo recurso: {err}")
         return jsonify(ex[0]), ex[1]
