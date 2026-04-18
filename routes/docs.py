@@ -140,7 +140,8 @@ def get_docs(resource: str = ""):
         upload_folder: str = app.config["UPLOAD_FOLDER"]
         base_dir: str = Path(__file__).resolve().parent.parent
         logger.debug(base_dir, "DIR")
-        url = f"{base_dir}/{upload_folder}/{resource}"
+        url = f"{base_dir}/uploads/{resource}"
+        logger.debug(url, "FILE")
 
         resource_url: Path = Path(url)
         img_format = get_format(resource)
