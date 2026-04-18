@@ -139,6 +139,7 @@ def get_docs(resource: str = ""):
     try:
         upload_folder: str = app.config["UPLOAD_FOLDER"]
         base_dir: str = Path(__file__).resolve().parent.parent
+        logger.debug(base_dir, "DIR")
         url = f"{base_dir}/{upload_folder}/{resource}"
 
         resource_url: Path = Path(url)
@@ -157,4 +158,5 @@ def get_docs(resource: str = ""):
         )
     except Exception as err:
         ex = exception_handler(err)
+        logger.error(ex)
         return jsonify(ex[0]), ex[1]
