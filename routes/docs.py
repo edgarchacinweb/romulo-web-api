@@ -138,7 +138,7 @@ def create_doc(ci: str):
 def get_docs(resource: str = ""):
     try:
         upload_folder: str = app.config["UPLOAD_FOLDER"]
-        base_dir: str = Path(__file__).resolve().parent
+        base_dir: str = Path(__file__).resolve().parent.parent
         url = f"{base_dir}/{upload_folder}/{resource}"
 
         resource_url: Path = Path(url)
