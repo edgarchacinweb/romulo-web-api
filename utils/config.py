@@ -18,4 +18,6 @@ app.jinja_loader = ChoiceLoader([
 ])
 
 bcrypt: Bcrypt = Bcrypt(app)
-
+
+bcrypt: Bcrypt = Bcrypt(app)
+

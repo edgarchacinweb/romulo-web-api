@@ -139,13 +139,13 @@ def get_student_card(student_id):
             lapsos.append({
                 "id": r[0],
                 "numero": r[1],
-                "visible": now > r[3],
+                "visible": now >= r[3],
                 "fecha_fin": r[3]
             })
 
         # 2. Obtener grado del estudiante
         cursor.execute('''
-            SELECT "CursoId", "Seccion" FROM "CursoEstudiante" 
+            SELECT "CursoId", "Seccion", "PeriodoEscolarId" FROM "CursoEstudiante" 
             WHERE "EstudianteId" = %s AND "PeriodoEscolarId" = (SELECT "PeriodoEscolarId" FROM "PeriodoEscolar" WHERE "Activo" = TRUE LIMIT 1);
         ''', (student_id,))
         curso_row = cursor.fetchone()
@@ -154,6 +154,7 @@ def get_student_card(student_id):
         
         curso_id = curso_row[0]
         seccion = curso_row[1]
+        periodo_id = curso_row[2]
 
         # 3. Obtener materias del curso (con DISTINCT para evitar duplicados en la tabla de horas)
         cursor.execute('''
@@ -247,9 +248,60 @@ def get_student_card(student_id):
             row_data["total_inasistencias"] = total_inasistencias_materia
             reporte.append(row_data)
 
+        # Calculo de Promedio General
+        suma_promedios_generales = 0
+        count_materias_con_promedio = 0
+        for row_data in reporte:
+            if row_data["promedio_final"] is not None:
+                suma_promedios_generales += row_data["promedio_final"]
+                count_materias_con_promedio += 1
+
+        promedio_general = round(suma_promedios_generales / count_materias_con_promedio, 2) if count_materias_con_promedio > 0 else None
+
+        # Calculo de Promedio Seccion y Posicion
+        cursor.execute('''
+            SELECT
+                n."EstudianteId",
+                SUM(n."Ponderacion" * 1.0) / COUNT(n."Ponderacion") as "Promedio_Estudiante"
+            FROM "Nota" n
+            JOIN "CursoEstudiante" ce ON n."EstudianteId" = ce."EstudianteId"
+            WHERE ce."CursoId" = %s AND ce."Seccion" = %s AND ce."PeriodoEscolarId" = %s
+            GROUP BY n."EstudianteId"
+            ORDER BY "Promedio_Estudiante" DESC;
+        ''', (curso_id, seccion, periodo_id))
+        ranking_rows = cursor.fetchall()
+
+        posicion_curso = "-"
+        promedio_seccion = None
+
+        if len(ranking_rows) > 0:
+            suma_ranking = 0
+            for index, (est_id, prom) in enumerate(ranking_rows):
+                suma_ranking += float(prom)
+                if str(est_id) == str(student_id):
+                    posicion_curso = f"{index + 1}/{len(ranking_rows)}"
+            promedio_seccion = round(suma_ranking / len(ranking_rows), 2)
+
+        # Obtener Docente Guia
+        cursor.execute("""
+            SELECT dp."Nombre", dp."Apellido" FROM "Horario" h
+            JOIN "Docente" d ON h."DocenteId" = d."DocenteId"
+            JOIN "DatosPersona" dp ON d."DatosPersonaId" = dp."DatosPersonaId"
+            JOIN "Materia" m ON h."MateriaId" = m."MateriaId"
+            WHERE h."CursoId"=%s AND h."Seccion"=%s AND h."PeriodoEscolarId"=%s
+            AND m."Nombre" ILIKE '%%ORIENTACION%%' AND m."Nombre" ILIKE '%%CONVIVENCIA%%'
+            LIMIT 1;
+        """, (curso_id, seccion, periodo_id))
+        docente_guia_row = cursor.fetchone()
+        docente_guia = f"{docente_guia_row[0]} {docente_guia_row[1]}" if docente_guia_row else "Por asignar"
+
         return jsonify({
             "reporte": reporte,
-            "habilitar_pdf": lapso3_cerrado
+            "habilitar_pdf": lapso3_cerrado,
+            "promedio_general": promedio_general,
+            "promedio_seccion": promedio_seccion,
+            "posicion_curso": posicion_curso,
+            "docente_guia": docente_guia
         }), 200
 
     except Exception as err:

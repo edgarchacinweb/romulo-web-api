@@ -38,7 +38,12 @@ class PeriodoInscripcion:
         reg_dict = dict()
         reg_dict["InscripcionId"] = self.id
         if self.start: reg_dict["Inicio"] = self.start.strftime("%Y-%m-%d")
-        if self.end: reg_dict["Fin"] = self.end.strftime("%Y-%m-%d")
+        if self.end:
+            reg_dict["Fin"] = self.end.strftime("%Y-%m-%d")
+            # Cierre definitivo: la fecha de fin ya pasó (comparación de objetos date, sin timezone)
+            reg_dict["EsDefinitivamenteCerrado"] = date.today() > self.end
+        else:
+            reg_dict["EsDefinitivamenteCerrado"] = False
         if self.fecha_creacion: reg_dict["FechaCreacion"] = self.fecha_creacion.strftime("%Y-%m-%d, %I:%M:%S %p")
         if self.activo is not None: reg_dict["Activo"] = self.activo
         if self.periodo_escolar: reg_dict["PeriodoEscolar"] = self.periodo_escolar.to_dict()

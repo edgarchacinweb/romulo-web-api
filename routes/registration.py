@@ -173,29 +173,123 @@ def close_registration(id):
 
         connection = Connection().get_connection()
         cursor = connection.cursor()
-        
-        sql = "UPDATE \"PeriodoInscripcion\" SET \"Activo\" = FALSE WHERE \"PeriodoInscripcion\" = %s"
+
+        # Verificar si la fecha de fin ya pasó (período ya cerrado definitivamente)
+        cursor.execute(
+            'SELECT "Fin", "Activo" FROM "PeriodoInscripcion" WHERE "PeriodoInscripcion" = %s',
+            (id,)
+        )
+        row = cursor.fetchone()
+        if not row:
+            cursor.close()
+            raise EntityNotFound("No se encontró el período de inscripción")
+
+        fecha_fin, activo = row[0], row[1]
+        hoy = datetime.now().date()
+
+        if hoy > fecha_fin:
+            cursor.close()
+            # El período ya expiró automáticamente; no se requiere acción manual
+            return (
+                jsonify({"message": "Este período ya está cerrado definitivamente por vencimiento de fecha."}),
+                409,
+            )
+
+        sql = 'UPDATE "PeriodoInscripcion" SET "Activo" = FALSE WHERE "PeriodoInscripcion" = %s'
         cursor.execute(sql, (id,))
         affected = cursor.rowcount
-        
+
         if affected == 0:
             connection.rollback()
             cursor.close()
             raise EntityNotFound("No se encontró el período de inscripción o ya está cerrado")
-            
+
         connection.commit()
         cursor.close()
-        
+
         AuditoriaRep().create(Auditoria({
             "Accion": "Actualización",
             "Descripcion": "Período de inscripción cerrado manualmente"
         }))
-        
+
         return jsonify({"message": "Período cerrado exitosamente"}), 200
     except Exception as err:
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
 
+
+@reg_term_bp.route("/registration/reactivate/<string:id>", methods=["PATCH"])
+def reactivate_registration(id):
+    """
+    Reactiva un período de inscripción cerrado manualmente, SOLO si su Fecha de Fin
+    no ha vencido auún. Si el día actual es mayor a Fin, se rechaza con HTTP 403
+    sin importar qué envíe el cliente.
+    """
+    try:
+        payload = Security.verify_token(request.headers)
+        if not payload or payload["role"] != Rol.ADMIN.name:
+            raise Unauthorized()
+        if not Validations.is_uuid(id):
+            raise InvalidId("El ID es inválido")
+
+        connection = Connection().get_connection()
+        cursor = connection.cursor()
+
+        # Consultar la fecha de fin directamente en BD (fuente de verdad, no el cliente)
+        cursor.execute(
+            'SELECT "Fin", "Activo" FROM "PeriodoInscripcion" WHERE "PeriodoInscripcion" = %s',
+            (id,)
+        )
+        row = cursor.fetchone()
+
+        if not row:
+            cursor.close()
+            raise EntityNotFound("No se encontró el período de inscripción")
+
+        fecha_fin, activo = row[0], row[1]
+
+        # VALIDACIÓN CRÍTICA DE SEGURIDAD:
+        # Usamos datetime.now().date() (hora del servidor) vs fecha_fin (objeto date de PG).
+        # Ambos son objetos Python `date`, sin strings ni timezones involucrados.
+        hoy = datetime.now().date()
+
+        if hoy > fecha_fin:
+            cursor.close()
+            return (
+                jsonify({
+                    "message": "No se puede reactivar: la Fecha de Fin de este período ya venció. "
+                               "El cierre es definitivo e irreversible."
+                }),
+                403,
+            )
+
+        if activo:
+            cursor.close()
+            return jsonify({"message": "El período ya está activo."}), 200
+
+        cursor.execute(
+            'UPDATE "PeriodoInscripcion" SET "Activo" = TRUE WHERE "PeriodoInscripcion" = %s',
+            (id,)
+        )
+        affected = cursor.rowcount
+
+        if affected == 0:
+            connection.rollback()
+            cursor.close()
+            raise EntityNotFound("No se pudo reactivar el período")
+
+        connection.commit()
+        cursor.close()
+
+        AuditoriaRep().create(Auditoria({
+            "Accion": "Actualización",
+            "Descripcion": "Período de inscripción reactivado por el administrador"
+        }))
+
+        return jsonify({"message": "Período reactivado exitosamente"}), 200
+    except Exception as err:
+        ex = exception_handler(err)
+        return jsonify(ex[0]), ex[1]
 
 # --- Rutas de Conteo para el Dashboard ---
 
@@ -247,7 +341,11 @@ def registrationCount():
         cursor.execute('SELECT COUNT(*) FROM "EstadoEstudiante" WHERE "Estado" = \'revision\';')
         total = cursor.fetchone()[0]
         
-        return jsonify({"count": total}), 200
+        cursor.execute('SELECT COUNT(*) FROM "PeriodoInscripcion" WHERE "Fin" >= CURRENT_DATE AND "Activo" = TRUE;')
+        active_periods_count = cursor.fetchone()[0]
+        periodo_activo = active_periods_count > 0
+        
+        return jsonify({"count": total, "periodo_activo": periodo_activo}), 200
     except Exception as err:
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
