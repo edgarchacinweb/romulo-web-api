@@ -327,9 +327,9 @@ def filter_students():
             JOIN "Curso" c ON ce."CursoId" = c."CursoId"
             JOIN "DatosPersona" rep ON e."RepresentanteId" = rep."DatosPersonaId"
             LEFT JOIN "Usuario" u ON rep."DatosPersonaId" = u."DatosPersona"
-            WHERE ee."Estado" = %s
+            WHERE ee."Estado" = %s AND ce."PeriodoEscolarId" = %s
         """
-        params = [estado]
+        params = [estado, periodo_escolar_id]
 
         if periodo_escolar_id and periodo_escolar_id != "undefined" and periodo_escolar_id != "":
             query += ' AND ce."PeriodoEscolarId" = %s'
