@@ -279,6 +279,14 @@ def filter_students():
         seccion = data.get("Seccion", "")
         periodo_escolar_id = data.get("PeriodoEscolarId", "")
 
+        if not periodo_escolar_id:
+            # Obtener el período escolar activo
+            cursor.execute(
+                'SELECT "PeriodoEscolarId" FROM "PeriodoEscolar" WHERE "Activo" = TRUE '
+                'ORDER BY "FechaInicio" DESC LIMIT 1;'
+            )
+            periodo_escolar_id = cursor.fetchone()[0]
+
         # --- VALIDACIÓN TEMPRANA: verificar existencia de horario para el grado/sección ---
         # Solo se aplica cuando el filtro proviene del módulo de Calificaciones
         # (es decir, cuando se especifican CursoId y Sección de forma explícita)
@@ -287,20 +295,12 @@ def filter_students():
             and curso_id and curso_id not in ("", "undefined")
             and seccion and seccion not in ("", "undefined")
         ):
-            # Obtener el período escolar activo
-            cursor.execute(
-                'SELECT "PeriodoEscolarId" FROM "PeriodoEscolar" WHERE "Activo" = TRUE '
-                'ORDER BY "FechaInicio" DESC LIMIT 1;'
-            )
-            periodo_row = cursor.fetchone()
-
-            if periodo_row:
-                periodo_activo_id = periodo_row[0]
+            if periodo_escolar_id:
                 cursor.execute(
                     'SELECT COUNT(*) FROM "Horario" '
                     'WHERE "CursoId" = %s AND "Seccion" = %s AND "PeriodoEscolarId" = %s '
                     'AND "MateriaId" IS NOT NULL;',
-                    (curso_id, int(seccion), periodo_activo_id)
+                    (curso_id, int(seccion), periodo_escolar_id)
                 )
                 count_row = cursor.fetchone()
                 horario_count = count_row[0] if count_row else 0
@@ -331,9 +331,9 @@ def filter_students():
         """
         params = [estado, periodo_escolar_id]
 
-        if periodo_escolar_id and periodo_escolar_id != "undefined" and periodo_escolar_id != "":
-            query += ' AND ce."PeriodoEscolarId" = %s'
-            params.append(periodo_escolar_id)
+        # if periodo_escolar_id and periodo_escolar_id != "undefined" and periodo_escolar_id != "":
+        #     query += ' AND ce."PeriodoEscolarId" = %s'
+        #     params.append(periodo_escolar_id)
 
         if curso_id and curso_id != "undefined" and curso_id != "":
             query += ' AND ce."CursoId" = %s'

@@ -7,6 +7,7 @@ from utils.validations import Validations
 from utils.Security import Security
 from utils.helpers import number_to_letter
 from database.connection import Connection
+from os import getenv
 
 schedule_bp = Blueprint("schedule", __name__)
 logger = Logger()
@@ -182,8 +183,9 @@ def create():
                 WHERE ce."CursoId" = %s AND ce."Seccion" = %s AND ce."PeriodoEscolarId" = %s AND ee."Estado" = 'inscrito'
             """, (data[0]["CursoId"], data[0]["Seccion"], periodo_escolar_id))
             student_count = cursor.fetchone()[0]
-            if student_count < 15:
-                raise ValidationError(f"La sección debe tener al menos 15 estudiantes inscritos para asignarle un horario. (Actual: {student_count})")
+            min_students = int(getenv("MIN_STUDENTS") or 15)
+            if student_count < min_students:
+                raise ValidationError(f"La sección debe tener al menos {min_students} estudiantes inscritos para asignarle un horario. (Actual: {student_count})")
 
         for item in data:
             if item.get("MateriaId") == "sin_asignar" or item.get("MateriaId") is None:

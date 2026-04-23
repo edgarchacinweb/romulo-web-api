@@ -201,14 +201,6 @@ CREATE TABLE "Auditoria" (
 "FechaCreacion" TIMESTAMP DEFAULT clock_timestamp()
 );
 
-CREATE TABLE "Incidencia" (
-"IncidenciaId" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-"DatosPersonaId" UUID NOT NULL,
-"Descripcion" VARCHAR NOT NULL,
-"Documento" VARCHAR NOT NULL,
-"Fecha" DATE NOT NULL
-);
-
 CREATE TABLE "Lapso" (
 "LapsoId" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
 "Numero" INTEGER NOT NULL,
@@ -216,16 +208,6 @@ CREATE TABLE "Lapso" (
 "FechaFin" DATE NOT NULL,
 "AñoEscolar" VARCHAR(20) NOT NULL,
 "PeriodoEscolarId" UUID NOT NULL
-);
-
-CREATE TABLE "PeriodoCargaNota" (
-	"PeriodoCargaNotaId" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-	"FechaInicio" DATE NOT NULL,
-	"FechaFin" DATE NOT NULL,
-	"PeriodoEscolarId" UUID NOT NULL,
-	"LapsoId" UUID NOT NULL,
-	"Activo" BOOLEAN DEFAULT TRUE,
-	"FechaCreacion" TIMESTAMP DEFAULT clock_timestamp()
 );
 
 CREATE TABLE "HistorialNota" (
@@ -236,6 +218,16 @@ CREATE TABLE "HistorialNota" (
 	"Justificacion" TEXT NOT NULL,
 	"UsuarioId" UUID NOT NULL,
 	"FechaCambio" TIMESTAMP DEFAULT clock_timestamp()
+);
+
+CREATE TABLE "PeriodoCargaNota" (
+	"PeriodoCargaNotaId" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+	"FechaInicio" DATE NOT NULL,
+	"FechaFin" DATE NOT NULL,
+	"PeriodoEscolarId" UUID NOT NULL,
+	"LapsoId" UUID NOT NULL,
+	"Activo" BOOLEAN DEFAULT TRUE,
+	"FechaCreacion" TIMESTAMP DEFAULT clock_timestamp()
 );
 
 -- Restricciones (Constraints)
@@ -250,7 +242,6 @@ ALTER TABLE "HistorialNota" ADD CONSTRAINT HistorialNota_NotaAnterior_Diferente_
 ALTER TABLE "HistorialNota" ADD FOREIGN KEY ("NotaId") REFERENCES "Nota" ("NotaId");
 ALTER TABLE "HistorialNota" ADD FOREIGN KEY ("UsuarioId") REFERENCES "Usuario" ("UsuarioId");
 ALTER TABLE "Lapso" ADD FOREIGN KEY ("PeriodoEscolarId") REFERENCES "PeriodoEscolar" ("PeriodoEscolarId");
-ALTER TABLE "Incidencia" ADD FOREIGN KEY ("DatosPersonaId") REFERENCES "DatosPersona" ("DatosPersonaId");
 ALTER TABLE "Clase" ADD FOREIGN KEY ("CursoId") REFERENCES "Curso" ("CursoId");
 ALTER TABLE "Clase" ADD FOREIGN KEY ("DocenteId") REFERENCES "Docente" ("DocenteId");
 ALTER TABLE "Clase" ADD FOREIGN KEY ("PeriodoEscolarId") REFERENCES "PeriodoEscolar" ("PeriodoEscolarId");
@@ -302,6 +293,18 @@ VALUES
 ('11:20', '11:25'),
 ('11:25', '12:05'),
 ('12:05', '12:45');
+
+INSERT INTO "Materia" ("Nombre")
+VALUES
+('ORIENTACION Y CONVIVENCIA');
+
+INSERT INTO "MateriaHorasAcademicas" ("MateriaId", "CursoId", "HorasAcademicas")
+VALUES
+((SELECT "MateriaId" FROM "Materia" WHERE "Nombre"='ORIENTACION Y CONVIVENCIA'), (SELECT "CursoId" FROM "Curso" WHERE "Grado"=1), 2),
+((SELECT "MateriaId" FROM "Materia" WHERE "Nombre"='ORIENTACION Y CONVIVENCIA'), (SELECT "CursoId" FROM "Curso" WHERE "Grado"=2), 2),
+((SELECT "MateriaId" FROM "Materia" WHERE "Nombre"='ORIENTACION Y CONVIVENCIA'), (SELECT "CursoId" FROM "Curso" WHERE "Grado"=3), 2),
+((SELECT "MateriaId" FROM "Materia" WHERE "Nombre"='ORIENTACION Y CONVIVENCIA'), (SELECT "CursoId" FROM "Curso" WHERE "Grado"=4), 2),
+((SELECT "MateriaId" FROM "Materia" WHERE "Nombre"='ORIENTACION Y CONVIVENCIA'), (SELECT "CursoId" FROM "Curso" WHERE "Grado"=5), 2);
 
 -- Procedimientos almacenados originales
 CREATE PROCEDURE registrar_curso_estudiante(estudiante_id UUID, curso_id UUID) AS $$
