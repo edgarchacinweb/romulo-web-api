@@ -58,9 +58,44 @@ def create():
         # -------------------------------------
 
         format = "%Y-%m-%d"
+        inicio_date = datetime.strptime(data["FechaInicio"], format).date()
+        fin_date = datetime.strptime(data["FechaFin"], format).date()
+
+        now_date = datetime.now().date()
+        if inicio_date < now_date:
+            raise ValidationError("La fecha de inicio de la inscripción debe ser mayor o igual al día actual.")
+
+        if fin_date < inicio_date:
+            raise ValidationError("La fecha de fin no puede ser anterior a la fecha de inicio.")
+
+        import calendar
+        from datetime import date
+        max_year = inicio_date.year
+        max_month = inicio_date.month + 1
+        if max_month > 12:
+            max_month = 1
+            max_year += 1
+        max_day = min(inicio_date.day, calendar.monthrange(max_year, max_month)[1])
+        max_end_date = date(max_year, max_month, max_day)
+        
+        if fin_date > max_end_date:
+            raise ValidationError("La fecha de fin no puede exceder más de un mes exacto desde la fecha de inicio.")
+
+        term_start = registration_term.fecha_inicio
+        term_end = registration_term.fecha_fin
+        
+        if isinstance(term_start, str): term_start = datetime.strptime(term_start, format).date()
+        if isinstance(term_end, str): term_end = datetime.strptime(term_end, format).date()
+
+        if inicio_date < term_start or fin_date < term_start:
+            raise ValidationError("Las fechas de inscripción no deben ser antes de la fecha de inicio del Período Escolar en curso.")
+        
+        if inicio_date > term_end or fin_date > term_end:
+            raise ValidationError("Las fechas de inscripción no deben ser después de la fecha de fin del Período Escolar en curso.")
+
         date_dict = {
-            "Inicio": datetime.strptime(data["FechaInicio"], format).date(),
-            "Fin": datetime.strptime(data["FechaFin"], format).date(),
+            "Inicio": inicio_date,
+            "Fin": fin_date,
             "PeriodoEscolar": registration_term
         }
         reg = PeriodoInscripcion(date_dict)
@@ -142,11 +177,49 @@ def update():
             raise InvalidId("El ID es inválido")
         
         format = "%Y-%m-%d"
+        existing_reg = rep.get(data["PeriodoInscripcionId"])
+        
+        inicio_date = datetime.strptime(data["FechaInicio"], format).date() if "FechaInicio" in data else existing_reg.start
+        fin_date = datetime.strptime(data["FechaFin"], format).date() if "FechaFin" in data else existing_reg.end
+        
+        now_date = datetime.now().date()
+        if inicio_date < now_date:
+            raise ValidationError("La fecha de inicio de la inscripción debe ser mayor o igual al día actual.")
+
+        if fin_date < inicio_date:
+            raise ValidationError("La fecha de fin no puede ser anterior a la fecha de inicio.")
+
+        import calendar
+        from datetime import date
+        max_year = inicio_date.year
+        max_month = inicio_date.month + 1
+        if max_month > 12:
+            max_month = 1
+            max_year += 1
+        max_day = min(inicio_date.day, calendar.monthrange(max_year, max_month)[1])
+        max_end_date = date(max_year, max_month, max_day)
+        
+        if fin_date > max_end_date:
+            raise ValidationError("La fecha de fin no puede exceder más de un mes exacto desde la fecha de inicio.")
+
+        reg_escolar = escolar_rep.get(existing_reg.periodo_escolar.id)
+        term_start = reg_escolar.fecha_inicio
+        term_end = reg_escolar.fecha_fin
+        
+        if isinstance(term_start, str): term_start = datetime.strptime(term_start, format).date()
+        if isinstance(term_end, str): term_end = datetime.strptime(term_end, format).date()
+
+        if inicio_date < term_start or fin_date < term_start:
+            raise ValidationError("Las fechas de inscripción no deben ser antes de la fecha de inicio del Período Escolar en curso.")
+        
+        if inicio_date > term_end or fin_date > term_end:
+            raise ValidationError("Las fechas de inscripción no deben ser después de la fecha de fin del Período Escolar en curso.")
+
         date_dict = {
             "id": data["PeriodoInscripcionId"],
+            "Inicio": inicio_date,
+            "Fin": fin_date
         }
-        if "FechaInicio" in data: date_dict["Inicio"] = datetime.strptime(data["FechaInicio"], format).date()
-        if "FechaFin" in data: date_dict["Fin"] = datetime.strptime(data["FechaFin"], format).date()
         reg = PeriodoInscripcion(date_dict)
         affected = rep.update(reg)
         if not affected:
