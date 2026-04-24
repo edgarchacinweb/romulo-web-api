@@ -66,8 +66,8 @@ def create_teacher():
             raise MissingEntityData("La dirección del docente es requerida")
         elif "Email" not in data or not data["Email"]:
             raise MissingEntityData("El email del docente es requerido")
-        elif not Validations.is_email(data["Email"]):
-            raise ValidationError("El email del docente tiene un formato incorrecto")
+        elif not Validations.is_email(data["Email"]) or not data["Email"].lower().endswith(("@gmail.com", "@hotmail.com", "@yahoo.com", "@outlook.com")):
+            raise ValidationError("El correo electrónico del docente debe ser @gmail.com, @hotmail.com, @yahoo.com o @outlook.com")
         elif "Horas" not in data or not data["Horas"]:
             raise MissingEntityData("Las horas del docente son requeridas")
         elif not Validations.is_teacher_hours(data["Horas"]):
@@ -359,8 +359,10 @@ def update(teacher_id):
         data = request.get_json()
         admin_id = payload["id"]
 
-        if any(key not in data for key in ("Cedula", "Nombre", "Apellido", "Sexo", "Telefono", "Direccion", "Ocupacion", "Horas", "Materias")):
+        if any(key not in data for key in ("Cedula", "Nombre", "Apellido", "Sexo", "Telefono", "Direccion", "Ocupacion", "Horas", "Materias", "Email")):
             raise MissingEntityData("No se recibieron datos suficientes")
+        elif not Validations.is_email(data["Email"]) or not data["Email"].lower().endswith(("@gmail.com", "@hotmail.com", "@yahoo.com", "@outlook.com")):
+            raise ValidationError("El correo electrónico del docente debe ser @gmail.com, @hotmail.com, @yahoo.com o @outlook.com")
         elif not (str(data["Cedula"]).isdigit() and 5 <= len(str(data["Cedula"]).strip()) <= 8):
             raise ValidationError("El número de Cédula del docente debe tener entre 5 y 8 dígitos numéricos")
         elif not (3000000 < int(data["Cedula"]) < 29000000):
