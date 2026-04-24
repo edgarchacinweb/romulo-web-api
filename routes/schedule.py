@@ -90,6 +90,8 @@ def filter():
     finally:
         cursor.close()
 
+@schedule_bp.route("/schedule/list", methods=["GET"])
+@schedule_bp.route("/schedule/list/", methods=["GET"])
 @schedule_bp.route("/schedule/list/<string:periodo_escolar_id>", methods=["GET"])
 def list_schedule(periodo_escolar_id = ""):
     conn = Connection().get_connection()
@@ -98,6 +100,13 @@ def list_schedule(periodo_escolar_id = ""):
         payload = Security.verify_token(request.headers)
         if payload is None:
             raise Unauthorized()
+
+        if not periodo_escolar_id or periodo_escolar_id == "undefined":
+            cursor.execute("SELECT \"PeriodoEscolarId\" FROM \"PeriodoEscolar\" WHERE \"Activo\"=true ORDER BY \"FechaInicio\" DESC LIMIT 1;")
+            row = cursor.fetchone()
+            if row is None:
+                return jsonify([]), 200
+            periodo_escolar_id = row[0]
 
         if not Validations.is_uuid(periodo_escolar_id):
             raise InvalidId("El identificador del período escolar es inválido")

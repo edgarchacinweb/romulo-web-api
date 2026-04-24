@@ -167,7 +167,12 @@ def list():
 def list_by_school_term(id:str = ""):
     try:
         if not id:
-            id = PeriodoEscolarRep().get_latest().id
+            latest = PeriodoEscolarRep().get_latest()
+            if not latest:
+                return jsonify({
+                    "1": [], "2": [], "3": [], "4": [], "5": []
+                }), 200
+            id = latest.id
 
         if not Validations.is_uuid(id):
             raise InvalidId(f"El identificador del periodo escolar es invático: {id}")
@@ -287,7 +292,10 @@ def create_student_course():
 def get_max_sections(period_term_id:str = ""):
     try:
         if not period_term_id:
-            period_term_id = PeriodoEscolarRep().get_latest().id
+            latest = PeriodoEscolarRep().get_latest()
+            if not latest:
+                return jsonify([]), 200
+            period_term_id = latest.id
             
         if not Validations.is_uuid(period_term_id):
             raise InvalidId(f"El identificador del periodo escolar es inválido: {period_term_id}")
