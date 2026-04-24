@@ -50,14 +50,20 @@ def create_teacher():
             raise MissingEntityData("La cédula del docente es requerida")
         elif not (str(data["Cedula"]).isdigit() and 5 <= len(str(data["Cedula"]).strip()) <= 8):
             raise ValidationError("La cédula del docente debe tener entre 5 y 8 dígitos numéricos")
+        elif not (3000000 < int(data["Cedula"]) < 29000000):
+            raise ValidationError("La cédula del docente debe ser estrictamente mayor a 3.000.000 y menor a 29.000.000")
+        elif len(set(str(data["Cedula"]).strip())) == 1 or str(data["Cedula"]).strip() in ["1234567", "12345678", "8765432", "87654321", "2345678", "23456789", "9876543", "98765432", "0123456", "01234567", "7654321", "76543210"]:
+            raise ValidationError("La cédula del docente presenta un formato inválido por secuencia repetitiva")
         elif "Telefono" not in data or not data["Telefono"]:
             raise MissingEntityData("El teléfono del docente es requerido")
+        elif not Validations.is_phone(data["Telefono"]):
+            raise ValidationError("El teléfono del docente debe tener un prefijo válido y exactamente 7 dígitos numéricos (Ej: 0412-1234567)")
+        elif data["Telefono"].split("-")[1] == "0000000" or len(set(data["Telefono"].split("-")[1])) == 1:
+            raise ValidationError("El teléfono del docente presenta un formato inválido (número iterativo o nulo)")
         elif "Ocupacion" not in data or not data["Ocupacion"]:
             raise MissingEntityData("La ocupación del docente es requerida")
         elif "Direccion" not in data or not data["Direccion"]:
             raise MissingEntityData("La dirección del docente es requerida")
-        elif not Validations.is_phone(data["Telefono"]):
-            raise ValidationError("El teléfono del docente debe tener un prefijo válido y exactamente 7 dígitos numéricos (Ej: 0412-1234567)")
         elif "Email" not in data or not data["Email"]:
             raise MissingEntityData("El email del docente es requerido")
         elif not Validations.is_email(data["Email"]):
@@ -357,6 +363,10 @@ def update(teacher_id):
             raise MissingEntityData("No se recibieron datos suficientes")
         elif not (str(data["Cedula"]).isdigit() and 5 <= len(str(data["Cedula"]).strip()) <= 8):
             raise ValidationError("El número de Cédula del docente debe tener entre 5 y 8 dígitos numéricos")
+        elif not (3000000 < int(data["Cedula"]) < 29000000):
+            raise ValidationError("La cédula del docente debe ser estrictamente mayor a 3.000.000 y menor a 29.000.000")
+        elif len(set(str(data["Cedula"]).strip())) == 1 or str(data["Cedula"]).strip() in ["1234567", "12345678", "8765432", "87654321", "2345678", "23456789", "9876543", "98765432", "0123456", "01234567", "7654321", "76543210"]:
+            raise ValidationError("La cédula del docente presenta un formato inválido por secuencia repetitiva")
         elif not Validations.is_name(data["Nombre"]):
             raise ValidationError("El nombre del docente tiene un formato incorrecto")
         elif not Validations.is_name(data["Apellido"]):
@@ -365,6 +375,8 @@ def update(teacher_id):
             raise ValidationError("El sexo del docente tiene un formato incorrecto")
         elif not Validations.is_phone(data["Telefono"]):
             raise ValidationError("El teléfono del docente debe tener un prefijo válido y exactamente 7 dígitos numéricos (Ej: 0412-1234567)")
+        elif data["Telefono"].split("-")[1] == "0000000" or len(set(data["Telefono"].split("-")[1])) == 1:
+            raise ValidationError("El teléfono del docente presenta un formato inválido (número iterativo o nulo)")
         elif not Validations.is_address(data["Direccion"]):
             raise ValidationError("La dirección del docente tiene un formato incorrecto")
         elif not Validations.is_occupation(data["Ocupacion"]):
