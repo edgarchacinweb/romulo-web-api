@@ -71,13 +71,12 @@ def teacher_subjects():
 
         usuario_id = payload["id"]
 
-        # CORRECCIÓN: Nombres de columnas ajustados exactamente a como están en tu Base de Datos
-        # d."DatosPersonaId" en la tabla Docente
-        # u."DatosPersona" en la tabla Usuario
         query = """
-            SELECT DISTINCT m."MateriaId", m."Nombre"
+            SELECT DISTINCT m."MateriaId", m."Nombre", c."Grado"
             FROM "Materia" m
             INNER JOIN "DocenteMateria" dm ON m."MateriaId" = dm."MateriaId"
+            INNER JOIN "MateriaHorasAcademicas" AS mha ON mha."MateriaId"=m."MateriaId"
+            INNER JOIN "Curso" AS c ON c."CursoId"=mha."CursoId"
             INNER JOIN "Docente" d ON dm."DocenteId" = d."DocenteId"
             INNER JOIN "Usuario" u ON d."DatosPersonaId" = u."DatosPersona"
             WHERE m."Activo" = true AND u."UsuarioId" = %s;
@@ -85,11 +84,29 @@ def teacher_subjects():
         
         cursor.execute(query, (usuario_id,))
         rows = cursor.fetchall()
+        subject_ids = []
+        subjects = []
+        schoolgrades = []
+
+        for s in rows:
+            subject_ids.append(s[0])
+            subjects.append(s[1])
+            # schoolgrades.append(list(map(lambda x: x[2], filter(lambda x: x[0] == s[0], rows))))
+
+        subject_ids = set(subject_ids)
+        subjects = set(subjects)
+        for s in subject_ids:
+            schoolgrades.append(list(map(lambda x: x[2], filter(lambda x: x[0] == s, rows))))
+
+        # logger.debug(set(subject_ids))
+        # logger.debug(set(subjects))
+        logger.debug(schoolgrades)
 
         return jsonify([{
-            "MateriaId": s[0],
-            "Nombre": s[1]
-        } for s in rows]), 200
+            "MateriaId": sid,
+            "Nombre": s,
+            "Grados": sg
+        } for sid, s, sg in zip(subject_ids, subjects, schoolgrades)]), 200
     except Exception as err:
         conn.rollback()
         ex = exception_handler(err)
