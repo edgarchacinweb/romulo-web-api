@@ -73,6 +73,14 @@ Logger().debug("hash password", pwd)
 def ver_manual():
     return render_template('app/admin/manual/index.html')
 
+@app.route('/manual/docente')
+def ver_manual_docente():
+    return render_template('app/docente/manual/index.html')
+
+@app.route('/manual/representante')
+def ver_manual_representante():
+    return render_template('app/representante/manual/index.html')
+
 # Run server
 if __name__ == "__main__":
     app.run(port=os.getenv("app_port"), host="0.0.0.0", debug=os.getenv("mode") == "debug")
