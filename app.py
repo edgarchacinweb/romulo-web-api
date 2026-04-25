@@ -1,6 +1,6 @@
 from utils.config import app
 from flask_cors import CORS
-from flask import jsonify
+from flask import jsonify, send_from_directory, render_template
 from routes import *
 from routes.lapsos import lapsos_bp  # <-- AÑADIMOS ESTA LÍNEA PARA SOLUCIONAR EL ERROR
 from utils.logger import Logger
@@ -35,6 +35,10 @@ app.config["UPLOAD_FOLDER"] = os.path.join(os.getcwd(), "uploads")
 app.config["MAX_PDF_SIZE"] = 2.5 * 1024 # 2.5MB
 app.config["PUBLIC_DIR"] = os.path.join(os.getcwd(), "public")
 
+app.config["STATIC_FOLDER"] = os.path.join(os.getcwd(), "static")
+if not os.path.isdir(app.config["STATIC_FOLDER"]):
+    os.makedirs(app.config["STATIC_FOLDER"])
+
 if not os.path.isdir(app.config["UPLOAD_FOLDER"]):
     os.makedirs(app.config["UPLOAD_FOLDER"])
 
@@ -64,6 +68,10 @@ def hello_world():
 
 pwd = bcrypt.generate_password_hash("Admin", int(os.getenv("pwd_rounds"))).decode("utf8")
 Logger().debug("hash password", pwd)
+
+@app.route('/manual')
+def ver_manual():
+    return render_template('app/admin/manual/index.html')
 
 # Run server
 if __name__ == "__main__":
