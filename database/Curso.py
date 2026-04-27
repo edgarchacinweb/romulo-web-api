@@ -220,7 +220,7 @@ class CursoRep(Repository):
     def get_max_section(self, period_term_id: str):
         try:
             cursor = self.db_connection.cursor()
-            sql = "SELECT \"Seccion\", COUNT(\"Seccion\"), c.\"CursoId\", c.\"Grado\", p.\"CapacidadSecciones\" FROM \"CursoEstudiante\" AS ce INNER JOIN \"Curso\" AS c ON ce.\"CursoId\"=c.\"CursoId\" INNER JOIN \"PeriodoEscolar\" AS p ON p.\"PeriodoEscolarId\"=ce.\"PeriodoEscolarId\" WHERE ce.\"PeriodoEscolarId\"=%s GROUP BY \"Seccion\", c.\"CursoId\", c.\"Grado\", p.\"CapacidadSecciones\" ORDER BY c.\"Grado\";"
+            sql = "SELECT MAX(\"Seccion\"), COUNT(*), c.\"CursoId\", c.\"Grado\", p.\"CapacidadSecciones\" FROM \"CursoEstudiante\" AS ce INNER JOIN \"Curso\" AS c ON ce.\"CursoId\"=c.\"CursoId\" INNER JOIN \"PeriodoEscolar\" AS p ON p.\"PeriodoEscolarId\"=ce.\"PeriodoEscolarId\" WHERE ce.\"PeriodoEscolarId\"=%s GROUP BY c.\"CursoId\", c.\"Grado\", p.\"CapacidadSecciones\" ORDER BY c.\"Grado\";"
             self.logger.debug(sql, "SQL")
             cursor.execute(sql, (period_term_id,))
             max_section = cursor.fetchall()
