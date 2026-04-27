@@ -13,7 +13,7 @@ people_bp = Blueprint("people", __name__)
 logger = Logger()
 rep = DatosPersonaRep()
 
-# --- VALIDACIÓN DE SEGURIDAD PARA CÉDULA ---
+# --- VALIDACIÓN DE SEGURIDAD PARA CÉDULA comentario --- 
 def validar_reglas_cedula(cedula):
     cedula_str = str(cedula).strip().upper()
     
