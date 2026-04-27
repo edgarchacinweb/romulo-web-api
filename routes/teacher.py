@@ -81,15 +81,27 @@ def create_teacher():
 
         # Creando registro de datos del docente
         if "DatosPersonaId" not in data:
-            cursor.execute(
-                """
-                INSERT INTO "DatosPersona" ("Nombre", "Apellido", "Sexo", "Cedula", "Telefono", "Ocupacion", "Direccion")
-                VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING "DatosPersonaId"
-                """,
-                (data["Nombre"], data["Apellido"], data["Sexo"], data["Cedula"], data["Telefono"], data["Ocupacion"], data["Direccion"])
-            )
+            cursor.execute('SELECT "DatosPersonaId" FROM "DatosPersona" WHERE "Cedula" = %s', (str(data["Cedula"]).strip(),))
+            existing_dp = cursor.fetchone()
+            if existing_dp:
+                id_datos_persona = existing_dp[0]
+                cursor.execute(
+                    """
+                    UPDATE "DatosPersona" SET "Nombre"=%s, "Apellido"=%s, "Sexo"=%s, "Telefono"=%s, "Ocupacion"=%s, "Direccion"=%s
+                    WHERE "DatosPersonaId"=%s
+                    """,
+                    (data["Nombre"], data["Apellido"], data["Sexo"], data["Telefono"], data["Ocupacion"], data["Direccion"], id_datos_persona)
+                )
+            else:
+                cursor.execute(
+                    """
+                    INSERT INTO "DatosPersona" ("Nombre", "Apellido", "Sexo", "Cedula", "Telefono", "Ocupacion", "Direccion")
+                    VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING "DatosPersonaId"
+                    """,
+                    (data["Nombre"], data["Apellido"], data["Sexo"], data["Cedula"], data["Telefono"], data["Ocupacion"], data["Direccion"])
+                )
 
-            id_datos_persona = cursor.fetchone()[0]
+                id_datos_persona = cursor.fetchone()[0]
         else:
             id_datos_persona = data["DatosPersonaId"]
         
