@@ -296,6 +296,7 @@ def filter_students():
             estado == "inscrito"
             and curso_id and curso_id not in ("", "undefined")
             and seccion and seccion not in ("", "undefined")
+            and False # By-pass para evitar que el dashboard bloquee la vista de estudiantes si no hay horario
         ):
             if periodo_escolar_id:
                 cursor.execute(
