@@ -147,7 +147,7 @@ def blocks():
         if payload is None:
             raise Unauthorized()
 
-        cursor.execute("SELECT * FROM \"BloqueHorario\";")
+        cursor.execute("SELECT DISTINCT ON (\"HoraInicio\", \"HoraFin\") * FROM \"BloqueHorario\" ORDER BY \"HoraInicio\" ASC, \"HoraFin\" ASC;")
         rows = cursor.fetchall()
 
         return jsonify([{
