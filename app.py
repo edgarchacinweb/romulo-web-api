@@ -9,6 +9,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import os
 import atexit
 from utils.config import bcrypt
+from dotenv import load_dotenv
+load_dotenv()
 
 CORS(app)
 Logger().start()
