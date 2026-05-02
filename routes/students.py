@@ -72,7 +72,7 @@ def validar_edad_grado(fecha_dt, grado):
 # --- FUNCIONES DE ASIGNACIÓN DINÁMICA DE SECCIÓN ---
 def calcular_distribucion_secciones(total_estudiantes):
     min_estud = 15
-    max_estud = 16
+    max_estud = 30
     max_secciones = 3
     if total_estudiantes == 0:
         return {}
