@@ -122,9 +122,9 @@ def register():
 
 @user_bp.route("/user/login", methods=["POST"])
 def login():
-    conn = Connection().get_connection()
-    cursor = conn.cursor()
     try:
+        conn = Connection().get_connection()
+        cursor = conn.cursor()
         data = request.get_json()
 
         if not "Email" in data or not "Clave" in data:
@@ -149,11 +149,19 @@ def login():
 
         return jsonify({"id": auth[0]}), 200
     except Exception as err:
-        conn.rollback()
+        if 'conn' in locals() and conn:
+            try:
+                conn.rollback()
+            except:
+                pass
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
     finally:
-        cursor.close()
+        if 'cursor' in locals() and cursor:
+            try:
+                cursor.close()
+            except:
+                pass
 
 @user_bp.route("/user/get", methods=["GET"])
 def get_user():
