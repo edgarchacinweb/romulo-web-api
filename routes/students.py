@@ -274,6 +274,8 @@ def filter_students():
         data = request.get_json() or {}
         
         estado = data.get("Estado", "revision")
+        if isinstance(estado, str):
+            estado = estado.lower()
         busqueda = data.get("Busqueda", "").strip()
         curso_id = data.get("CursoId", "")
         seccion = data.get("Seccion", "")
