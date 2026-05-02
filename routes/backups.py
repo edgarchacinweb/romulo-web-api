@@ -31,8 +31,12 @@ def db_backup():
         logger.debug(backup_file, "BACKUP_FILE")
         logger.debug(listdir(backup_dir), "BACKUP_DIR")
 
-        if not path.exists(backup_file):
-            logger.error(f"No se creó el archivo de respaldo de la base de datos: {backup_file}")
+        # 1. Unimos la carpeta backups con el nombre del archivo
+        full_path = path.join(backup_dir, backup_file)
+
+        # 2. Revisamos si existe usando la ruta completa
+        if not path.exists(full_path):
+            logger.error(f"No se creó el archivo de respaldo de la base de datos: {full_path}")
             raise BackupException("No se pudo crear el respaldo de la base de datos")
 
         return jsonify({"Archivo": backup_file}), 200
@@ -75,7 +79,7 @@ def download(file):
         if not path.exists(f"backups/{file}"):
             raise Exception("No se encontró el archivo de respaldo específicado")
 
-        return send_file(f"../backups/{file}", as_attachment=True, download_name=file)
+        return send_file(f"backups/{file}", as_attachment=True, download_name=file)
     except Exception as err:
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
