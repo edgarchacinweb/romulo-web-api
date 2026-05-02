@@ -19,8 +19,8 @@ class AuditoriaRep():
             sql = "INSERT INTO \"Auditoria\" (\"UsuarioId\", \"Descripcion\", \"Accion\") VALUES (%s, %s, %s) RETURNING \"AuditoriaId\";"
             self.logger.debug(sql, "SQL")
             cursor.execute(sql, model.to_tuple())
-            self.db_connection.commit()
             id = cursor.fetchone()[0]
+            self.db_connection.commit()
             cursor.close()
             return id
         except Exception as e:
