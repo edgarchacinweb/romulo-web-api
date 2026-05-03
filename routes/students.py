@@ -609,11 +609,11 @@ def submit_reinscription(id):
             fecha_dt = validar_fecha_nacimiento(data["FechaNacimiento"])
             
             # Obtener Grado del curso para validar edad
-            val_curso_id = str(data["IdCurso"]).strip()
-            cursor.execute('SELECT "Grado" FROM "Curso" WHERE "CursoId" = %s', (val_curso_id,))
-            curso_row = cursor.fetchone()
-            if not curso_row: raise Exception("El curso seleccionado no existe.")
-            validar_edad_grado(fecha_dt, curso_row[0])
+            val_curso_id = str(data.get("IdCurso", "")).strip()
+        cursor.execute('SELECT "Grado" FROM "Curso" WHERE "CursoId" = %s', (val_curso_id,))
+        curso_row = cursor.fetchone()
+        if not curso_row: raise Exception("El curso seleccionado no existe.")
+        validar_edad_grado(fecha_dt, curso_row[0])
 
         # 1. Actualizar DatosPersona
         cursor.execute('SELECT "DatosPersonaId" FROM "Estudiante" WHERE "EstudianteId" = %s', (id,))
