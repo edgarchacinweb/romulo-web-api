@@ -175,20 +175,24 @@ def create():
             raise Exception("La fecha de nacimiento es requerida.")
 
         # Obtener Grado del curso para validar edad
-        val_curso_id = str(data["IdCurso"]).strip()
+        val_curso_id = str(data.get("IdCurso", "")).strip()
         cursor.execute('SELECT "Grado" FROM "Curso" WHERE "CursoId" = %s', (val_curso_id,))
         curso_row = cursor.fetchone()
         if not curso_row: raise Exception("El curso seleccionado no existe.")
         validar_edad_grado(fecha_dt, curso_row[0])
 
+        genero = data.get("Genero") or data.get("genero") or data.get("Sexo") or data.get("sexo")
+        if not genero:
+            raise Exception("El género o sexo es requerido.")
+            
         cursor.execute("""INSERT INTO "DatosPersona" ("Nombre", "Apellido", "Sexo", "Cedula", "Direccion") 
                            VALUES (%s,%s,%s,%s,%s) RETURNING "DatosPersonaId";""",
-                        (data["Nombre"].strip(), data["Apellido"].strip(), data["Genero"], data["Cedula"], data["Direccion"]))
+                        (data.get("Nombre", "").strip(), data.get("Apellido", "").strip(), genero, data.get("Cedula", ""), data.get("Direccion", "")))
         dp_id = cursor.fetchone()[0]
 
         cursor.execute("""INSERT INTO "Estudiante" ("FechaNacimiento", "Parentesco", "DatosPersonaId", "RepresentanteId") 
                            VALUES (%s,%s,%s,%s) RETURNING "EstudianteId";""",
-                        (datetime.strptime(data["FechaNacimiento"], "%d/%m/%Y"), data["Parentesco"], dp_id, data["IdRepresentante"]))
+                        (datetime.strptime(data["FechaNacimiento"], "%d/%m/%Y"), data.get("Parentesco"), dp_id, data.get("IdRepresentante")))
         est_id = cursor.fetchone()[0]
 
         cursor.execute('INSERT INTO "EstadoEstudiante" ("EstudianteId", "Estado") VALUES (%s, \'revision\')', (est_id,))
