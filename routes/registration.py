@@ -375,7 +375,7 @@ def countTotalStudents():
         if not payload or payload["role"] != Rol.ADMIN.name:
             raise Unauthorized()
         
-        cursor.execute('SELECT COUNT(*) FROM "Estudiante";')
+        cursor.execute('SELECT COUNT(*) FROM "Estudiante" JOIN "EstadoEstudiante" ON "Estudiante"."EstudianteId" = "EstadoEstudiante"."EstudianteId" WHERE "EstadoEstudiante"."Estado" = \'inscrito\' AND "EstadoEstudiante"."Activo" = TRUE;')
         total = cursor.fetchone()[0]
         return jsonify({"count": total}), 200
     except Exception as err:
