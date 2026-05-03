@@ -174,12 +174,17 @@ def create():
         else:
             raise Exception("La fecha de nacimiento es requerida.")
 
-        # Obtener Grado del curso para validar edad
-        val_curso_id = str(data.get("IdCurso", "")).strip()
-        cursor.execute('SELECT "Grado" FROM "Curso" WHERE "CursoId" = %s', (val_curso_id,))
+        # Obtener el ID REAL del curso buscando por el Grado enviado desde el JS
+        grado_enviado = str(data.get("IdCurso", "")).strip()
+        cursor.execute('SELECT "CursoId", "Grado" FROM "Curso" WHERE "Grado" = %s LIMIT 1', (grado_enviado,))
         curso_row = cursor.fetchone()
-        if not curso_row: raise Exception("El curso seleccionado no existe.")
-        validar_edad_grado(fecha_dt, curso_row[0])
+        
+        if not curso_row: raise Exception(f"No se encontró un curso para el grado {grado_enviado} en la base de datos.")
+        
+        val_curso_id = curso_row[0]  # Aquí guardamos el ID real de PostgreSQL
+        grado_real = curso_row[1]    # Aquí guardamos el número del grado (1 al 5)
+        
+        validar_edad_grado(fecha_dt, grado_real)
 
         genero = data.get("Genero") or data.get("genero") or data.get("Sexo") or data.get("sexo")
         if not genero:
