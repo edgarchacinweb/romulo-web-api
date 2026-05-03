@@ -9,8 +9,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 # Setting email sender
 app.config['MAIL_SERVER'] = getenv("MAIL_SERVER")
-app.config['MAIL_PORT'] = getenv("MAIL_PORT")
-app.config['MAIL_USE_TLS'] = getenv("MAIL_USE_TLS")
+app.config['MAIL_PORT'] = int(getenv("MAIL_PORT", 587)) if getenv("MAIL_PORT") else 587
+app.config['MAIL_USE_TLS'] = getenv("MAIL_USE_TLS") == "True"
 app.config['MAIL_USERNAME'] = getenv("MAIL_USERNAME")
 app.config['MAIL_PASSWORD'] = getenv("MAIL_PASSWORD")
 app.config['MAIL_DEFAULT_SENDER'] = getenv("MAIL_USERNAME")
