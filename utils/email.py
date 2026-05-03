@@ -5,7 +5,7 @@ from utils.config import app
 from os import getenv
 from flask_mail import Mail, Message
 from utils.exceptions import EmailException
-from threading import Thread
+from concurrent.futures import ThreadPoolExecutor
 
 # Setting email sender
 app.config['MAIL_SERVER'] = getenv("MAIL_SERVER")
@@ -17,6 +17,9 @@ app.config['MAIL_DEFAULT_SENDER'] = getenv("MAIL_USERNAME")
 
 mail = Mail(app)
 logger = Logger()
+
+# Crear un pool de hilos global para manejar los correos en segundo plano de forma segura en producción
+email_executor = ThreadPoolExecutor(max_workers=4)
 
 def send_async_email(app, msg):
     with app.app_context():
@@ -30,9 +33,10 @@ def send_email(to, subject, template, body):
         msg = Message(subject, sender=app.config['MAIL_USERNAME'], recipients=[to])
         msg.html = template
         msg.body = body
-        thread = Thread(target=send_async_email, args=(app, msg))
-        thread.start()
+        
+        # Enviar la tarea al pool de hilos en lugar de crear un hilo huérfano nuevo
+        email_executor.submit(send_async_email, app, msg)
     except Exception as err:
-        logger.error("Error al iniciar thread de correo electrónico")
+        logger.error("Error al iniciar tarea de correo electrónico")
         raise EmailException("Error al enviar el correo electrónico")
 
