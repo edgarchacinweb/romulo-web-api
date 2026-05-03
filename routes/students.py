@@ -174,12 +174,12 @@ def create():
         else:
             raise Exception("La fecha de nacimiento es requerida.")
 
-        # Obtener el ID REAL del curso buscando por el Grado enviado desde el JS
-        grado_enviado = str(data.get("IdCurso", "")).strip()
-        cursor.execute('SELECT "CursoId", "Grado" FROM "Curso" WHERE "Grado" = %s LIMIT 1', (grado_enviado,))
+        # Obtener el ID REAL del curso buscando por el CursoId enviado desde el JS
+        curso_id_enviado = str(data.get("IdCurso", "")).strip()
+        cursor.execute('SELECT "CursoId", "Grado" FROM "Curso" WHERE "CursoId" = %s LIMIT 1', (curso_id_enviado,))
         curso_row = cursor.fetchone()
         
-        if not curso_row: raise Exception(f"No se encontró un curso para el grado {grado_enviado} en la base de datos.")
+        if not curso_row: raise Exception("El curso seleccionado no existe en la base de datos.")
         
         val_curso_id = curso_row[0]  # Aquí guardamos el ID real de PostgreSQL
         grado_real = curso_row[1]    # Aquí guardamos el número del grado (1 al 5)
