@@ -898,71 +898,52 @@ def download_enrollment_form(id):
 @student_bp.route("/students/<string:id>/subjects", methods=["GET"])
 def get_student_subjects(id):
     """
-    Obtiene las materias asignadas al estudiante basándose en el HORARIO
-    registrado para su grado y sección en el período escolar activo.
-
-    Lógica de negocio:
-    - Si existe un horario para la sección del estudiante → retorna las
-      materias únicas extraídas de dicho horario.
-    - Si NO existe horario → retorna sin_horario=True y lista vacía, para
-      que el frontend pueda mostrar la advertencia correspondiente.
+    Obtiene las materias asignadas al estudiante basándose EXCLUSIVAMENTE
+    en el HORARIO registrado para su grado y sección en el período escolar activo.
     """
     conn, cursor = get_db()
     try:
-        # 1. Obtener CursoId, Seccion y PeriodoEscolarId activo del estudiante
+        # 1. Verificar si el estudiante está inscrito en un período activo
         cursor.execute("""
-            SELECT ce."CursoId", ce."Seccion", pe."PeriodoEscolarId"
+            SELECT 1
             FROM "CursoEstudiante" ce
             JOIN "PeriodoEscolar" pe ON ce."PeriodoEscolarId" = pe."PeriodoEscolarId"
             JOIN "EstadoEstudiante" ee ON ce."EstudianteId" = ee."EstudianteId"
             WHERE ce."EstudianteId" = %s
               AND pe."Activo" = TRUE
               AND ee."Estado" = 'inscrito'
-            ORDER BY pe."FechaInicio" DESC
             LIMIT 1;
         """, (id,))
-        enrollment_row = cursor.fetchone()
-
-        if not enrollment_row:
-            # Estudiante sin inscripción activa
+        
+        if not cursor.fetchone():
             return jsonify({
                 "sin_horario": True,
                 "materias": []
             }), 200
 
-        curso_id, seccion, periodo_id = enrollment_row
-
-        # 2. Verificar si existe al menos un registro de Horario para
-        #    este Grado + Sección + Período escolar activo
-        cursor.execute("""
-            SELECT COUNT(*) FROM "Horario"
-            WHERE "CursoId" = %s
-              AND "Seccion" = %s
-              AND "PeriodoEscolarId" = %s
-              AND "MateriaId" IS NOT NULL;
-        """, (curso_id, seccion, periodo_id))
-        count_row = cursor.fetchone()
-        horario_count = count_row[0] if count_row else 0
-
-        if horario_count == 0:
-            # No existe horario para esta sección → advertencia al frontend
-            return jsonify({
-                "sin_horario": True,
-                "materias": []
-            }), 200
-
-        # 3. Extraer materias ÚNICAS del horario de la sección (activas)
+        # 2. INNER JOIN estricto para extraer ÚNICAMENTE las materias 
+        #    en el horario del estudiante.
         cursor.execute("""
             SELECT DISTINCT m."MateriaId", m."Nombre"
-            FROM "Horario" h
-            JOIN "Materia" m ON h."MateriaId" = m."MateriaId"
-            WHERE h."CursoId" = %s
-              AND h."Seccion" = %s
-              AND h."PeriodoEscolarId" = %s
+            FROM "CursoEstudiante" ce
+            INNER JOIN "PeriodoEscolar" pe ON ce."PeriodoEscolarId" = pe."PeriodoEscolarId"
+            INNER JOIN "Horario" h 
+                ON ce."CursoId" = h."CursoId" 
+               AND ce."Seccion" = h."Seccion" 
+               AND ce."PeriodoEscolarId" = h."PeriodoEscolarId"
+            INNER JOIN "Materia" m ON h."MateriaId" = m."MateriaId"
+            WHERE ce."EstudianteId" = %s
+              AND pe."Activo" = TRUE
               AND m."Activo" = TRUE
             ORDER BY m."Nombre" ASC;
-        """, (curso_id, seccion, periodo_id))
+        """, (id,))
         rows = cursor.fetchall()
+
+        if not rows:
+            return jsonify({
+                "sin_horario": True,
+                "materias": []
+            }), 200
 
         materias = [{"id": r[0], "name": r[1]} for r in rows]
 
