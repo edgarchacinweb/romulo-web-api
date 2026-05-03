@@ -156,14 +156,15 @@ def get_student_card(student_id):
         seccion = curso_row[1]
         periodo_id = curso_row[2]
 
-        # 3. Obtener materias del curso (con DISTINCT para evitar duplicados en la tabla de horas)
+        # 3. Obtener materias del curso (estrictamente desde el Horario de la sección)
         cursor.execute('''
             SELECT DISTINCT m."MateriaId", m."Nombre" 
-            FROM "MateriaHorasAcademicas" mha
-            JOIN "Materia" m ON mha."MateriaId" = m."MateriaId"
-            WHERE mha."CursoId" = %s
+            FROM "Horario" h
+            JOIN "Materia" m ON h."MateriaId" = m."MateriaId"
+            WHERE h."CursoId" = %s AND h."Seccion" = %s AND h."PeriodoEscolarId" = %s
+              AND m."Activo" = TRUE
             ORDER BY m."Nombre" ASC;
-        ''', (curso_id,))
+        ''', (curso_id, seccion, periodo_id))
         materias_rows = cursor.fetchall()
 
         # 4. Obtener notas actuales
