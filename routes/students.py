@@ -278,6 +278,7 @@ def filter_students():
             estado = estado.lower()
         busqueda = data.get("Busqueda", "").strip()
         curso_id = data.get("CursoId", "")
+        grado = data.get("Grado", "")
         seccion = data.get("Seccion", "")
         periodo_escolar_id = data.get("PeriodoEscolarId", "")
 
@@ -341,6 +342,10 @@ def filter_students():
         if curso_id and curso_id != "undefined" and curso_id != "":
             query += ' AND ce."CursoId" = %s'
             params.append(curso_id)
+
+        if grado and grado != "undefined" and grado != "":
+            query += ' AND c."Grado" = %s'
+            params.append(int(grado))
 
         if seccion and seccion != "undefined" and seccion != "":
             query += ' AND ce."Seccion" = %s'
