@@ -137,7 +137,7 @@ def login():
         
         logger.debug(bcrypt.check_password_hash(auth[1], data["Clave"]))
         if not bcrypt.check_password_hash(auth[1], data["Clave"]):
-            raise ValidationError("Contraseña inválida")
+            raise ValidationError("contraseña incorrecta")
         
         auditory.create(Auditoria({
             "Accion": "Sesión",
