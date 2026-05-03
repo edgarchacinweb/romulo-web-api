@@ -34,7 +34,7 @@ atexit.register(lambda: scheduler.shutdown())
 
 # Config and create uploads folder
 app.config["UPLOAD_FOLDER"] = os.path.join(os.getcwd(), "uploads")
-app.config["MAX_PDF_SIZE"] = 2.5 * 1024 # 2.5MB
+app.config["MAX_PDF_SIZE"] = 10 * 1024 # 10MB
 app.config["PUBLIC_DIR"] = os.path.join(os.getcwd(), "public")
 
 app.config["STATIC_FOLDER"] = os.path.join(os.getcwd(), "static")
@@ -86,3 +86,4 @@ def ver_manual_representante():
 # Run server
 if __name__ == "__main__":
     app.run(port=os.getenv("app_port"), host="0.0.0.0", debug=os.getenv("mode") == "debug")
+    
