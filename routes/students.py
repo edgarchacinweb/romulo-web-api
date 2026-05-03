@@ -202,7 +202,7 @@ def create():
 
         cursor.execute('INSERT INTO "EstadoEstudiante" ("EstudianteId", "Estado") VALUES (%s, \'revision\')', (est_id,))
         
-        val_curso_id = str(data["IdCurso"]).strip()
+       # val_curso_id = str(data["IdCurso"]).strip()
         cursor.execute('SELECT "PeriodoEscolarId" FROM "PeriodoInscripcion" WHERE "Activo" = TRUE LIMIT 1;')
         periodo_row = cursor.fetchone()
         
