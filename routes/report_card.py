@@ -289,7 +289,7 @@ def get_student_card(student_id):
             JOIN "DatosPersona" dp ON d."DatosPersonaId" = dp."DatosPersonaId"
             JOIN "Materia" m ON h."MateriaId" = m."MateriaId"
             WHERE h."CursoId"=%s AND h."Seccion"=%s AND h."PeriodoEscolarId"=%s
-            AND m."Nombre" ILIKE '%%ORIENTACION%%' AND m."Nombre" ILIKE '%%CONVIVENCIA%%'
+            AND m."Nombre" ILIKE '%%ORIENTACI%%N%%' AND m."Nombre" ILIKE '%%CONVIVENCIA%%'
             LIMIT 1;
         """, (curso_id, seccion, periodo_id))
         docente_guia_row = cursor.fetchone()

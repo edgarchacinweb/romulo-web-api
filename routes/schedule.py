@@ -62,7 +62,7 @@ def filter():
             JOIN "DatosPersona" dp ON d."DatosPersonaId" = dp."DatosPersonaId"
             JOIN "Materia" m ON h."MateriaId" = m."MateriaId"
             WHERE h."CursoId"=%s AND h."Seccion"=%s AND h."PeriodoEscolarId"=%s
-            AND m."Nombre" ILIKE '%%ORIENTACION%%' AND m."Nombre" ILIKE '%%CONVIVENCIA%%'
+            AND m."Nombre" ILIKE '%%ORIENTACI%%N%%' AND m."Nombre" ILIKE '%%CONVIVENCIA%%'
             LIMIT 1;
         """, (data["CursoId"], data["Seccion"], data["PeriodoEscolarId"]))
         docente_guia_row = cursor.fetchone()
@@ -218,7 +218,7 @@ def create():
                 raise InvalidId("El día es inválido")
 
             # Validación: Profesor Guía (Orientación y Convivencia) es único por período escolar
-            cursor.execute("SELECT \"MateriaId\" FROM \"Materia\" WHERE \"Nombre\" ILIKE '%ORIENTACION%' AND \"Nombre\" ILIKE '%CONVIVENCIA%' LIMIT 1")
+            cursor.execute("SELECT \"MateriaId\" FROM \"Materia\" WHERE \"Nombre\" ILIKE '%ORIENTACI%N%' AND \"Nombre\" ILIKE '%CONVIVENCIA%' LIMIT 1")
             orientacion_row = cursor.fetchone()
             if orientacion_row and item["MateriaId"] == orientacion_row[0]:
                 cursor.execute("""
