@@ -76,10 +76,11 @@ def download(file):
         # if not payload or payload["role"] != Rol.ADMIN.name:
             # raise Unauthorized()
 
-        if not path.exists(f"backups/{file}"):
+        file_path = path.join(getcwd(), "backups", file)
+        if not path.exists(file_path):
             raise Exception("No se encontró el archivo de respaldo específicado")
 
-        return send_file(f"backups/{file}", as_attachment=True, download_name=file)
+        return send_file(file_path, as_attachment=True, download_name=file)
     except Exception as err:
         ex = exception_handler(err)
         return jsonify(ex[0]), ex[1]
